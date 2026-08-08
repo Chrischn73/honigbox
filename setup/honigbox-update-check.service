@@ -1,0 +1,8 @@
+[Unit]
+Description=HonigBox – prueft regelmaessig auf eine neue Version (GitHub)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/pi-setup-portal/pi_setup_portal.py --check-update honigbox

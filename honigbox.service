@@ -1,0 +1,20 @@
+[Unit]
+Description=HonigBox – Tuerueberwachung (GPIO-Schalter, Foto, Pushover)
+After=network-online.target
+Wants=network-online.target
+# Falls die Speicherort-Einstellung "RAM" ist, ist das eine tmpfs-Mount aus
+# /etc/fstab (siehe speicher_umschalten.sh) - systemd mountet sie noetigenfalls
+# selbst und startet diesen Dienst erst danach. Bei "Platte" ist das ein
+# normaler Unterordner der Root-Partition, die sowieso immer als erstes da ist.
+RequiresMountsFor=/opt/honigbox/fotos/Bilder
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/honigbox
+ExecStart=/usr/bin/python3 /opt/honigbox/honigbox.sh
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

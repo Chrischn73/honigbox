@@ -1,0 +1,265 @@
+#!/usr/bin/python
+#---------------------------------------------------------------------
+#    ___  ___  _ ____
+#   / _ \/ _ \(_) __/__  __ __
+#  / , _/ ___/ /\ \/ _ \/ // /
+# /_/|_/_/  /_/___/ .__/\_, /
+#                /_/   /___/
+#
+#           HonigBox Tuerueberwachung
+# Ueberwacht einen Tuerkontaktschalter am Raspberry Pi (GPIO17) und meldet
+# per Pushover, wenn die Box geoeffnet/geschlossen wird. Waehrend die Tuer
+# offen ist, werden laufend Fotos nach einstellbarem Zeitplan gemacht
+# (siehe .foto-zeitplan.json, per Galerie-Weboberflaeche editierbar).
+#---------------------------------------------------------------------
+import json
+import os
+import subprocess
+import threading
+import time
+from gpiozero import Button
+
+SCRIPT_DIR = "/opt/honigbox"
+BILDER_DIR = "/opt/honigbox/fotos/Bilder"
+# IMMER auf der SD-Karte, nie in BILDER_DIR - das kann bei aktivierter
+# RAM-Disk (siehe Speicher-Einstellungen in galerie_server.py) ein tmpfs
+# sein und wird dann bei jedem Neustart geleert. Pfad muss identisch mit
+# EINSTELLUNGEN_DIR in galerie_server.py sein (gemeinsame Ablage).
+EINSTELLUNGEN_DIR = "/opt/honigbox/einstellungen"
+os.makedirs(EINSTELLUNGEN_DIR, exist_ok=True)
+# Explizit chmod, nicht nur auf den mode= von makedirs verlassen: falls dieser
+# Prozess (root) den Ordner als Erster anlegt, wuerde er sonst je nach umask
+# z.B. nur 755 bekommen - dann kann galerie_server.py (www-data) dort keine
+# Einstellungen mehr speichern (und der chmod-Versuch DORT scheitert lautlos,
+# weil nur der Eigentuemer/root chmod darf). Als root schlaegt das hier nie fehl.
+os.chmod(EINSTELLUNGEN_DIR, 0o777)
+SWITCH_PIN = 17  # BCM-Nummerierung
+
+# Schalter zwischen GPIO17 und GND, interner Pull-Up.
+# Kontakt geschlossen (is_pressed=True)  -> Tuer zu
+# Kontakt offen      (is_pressed=False) -> Tuer offen
+door_switch = Button(SWITCH_PIN, pull_up=True, bounce_time=0.2)
+
+WAIT_CONFIRM = 1        # Sek. bis Bestaetigungsmessung nach erster Erkennung
+CONFIRM_ROUNDS = 2       # Anzahl Bestaetigungen, um Prellen auszuschliessen
+CONFIRM_DELAY = 2        # Sek. zwischen Bestaetigungen
+WAIT_ESCALATE_1 = 200    # Sek. offen bis push2.sh (Eskalationsstufe 1)
+WAIT_ESCALATE_2 = 1800   # weitere Sek. offen bis push3.sh (Eskalationsstufe 2)
+LOOP_DELAY = 2           # Sek. zwischen Durchlaeufen der Hauptschleife
+LOOP_TICK = 1            # Sek. zwischen Pruefungen waehrend die Tuer offen ist
+
+FOTO_ZEITPLAN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".foto-zeitplan.json")
+FOTO_ZEITPLAN_STANDARD = {
+    "intervall_1": 3, "schwelle_sekunden": 60, "intervall_2": 15, "max_anzahl": 30,
+    "aufbewahrungstage": 30, "dunkle_fotos_loeschen": False, "helligkeitsschwelle": 25,
+}
+
+STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".status.json")
+TUER_SIMULATION_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-simulation-bis.json")
+TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-signal")
+
+
+def schreibe_status(offen):
+    """Fuer die Status-Anzeige in der Galerie-Weboberflaeche (siehe /api/status
+    in galerie_server.py) - die Galerie liest hier nur, greift nicht selbst
+    per GPIO auf den Schalter zu."""
+    try:
+        os.makedirs(BILDER_DIR, exist_ok=True)
+        with open(STATUS_PATH, "w") as f:
+            json.dump({"tuer_offen": offen, "aktualisiert": time.time()}, f)
+    except OSError:
+        pass
+
+
+def simulation_aktiv():
+    """True, solange eine per Web-UI ausgeloeste Test-Simulation ("Tuer
+    oeffnen") noch nicht abgelaufen ist. Raeumt die Datei selbst auf, sobald
+    die Zeit abgelaufen ist - kein Cleanup an anderer Stelle noetig."""
+    if not os.path.isfile(TUER_SIMULATION_PATH):
+        return False
+    try:
+        with open(TUER_SIMULATION_PATH) as f:
+            bis = json.load(f).get("bis", 0)
+    except (json.JSONDecodeError, OSError, TypeError):
+        return False
+    if time.time() >= bis:
+        try:
+            os.remove(TUER_SIMULATION_PATH)
+        except OSError:
+            pass
+        return False
+    return True
+
+
+def door_is_open():
+    offen = simulation_aktiv() or not door_switch.is_pressed
+    schreibe_status(offen)
+    return offen
+
+
+def neustart_angefordert():
+    """True, wenn per Web-UI ein Neustart des aktuellen Oeffnungs-Zyklus
+    angefordert wurde (Simulationsbutton bei bereits offener Tuer) - konsumiert
+    das Signal (loescht die Datei), damit es nur einmal wirkt."""
+    if not os.path.isfile(TUER_NEUSTART_SIGNAL_PATH):
+        return False
+    try:
+        os.remove(TUER_NEUSTART_SIGNAL_PATH)
+    except OSError:
+        pass
+    return True
+
+
+def run(script, *args):
+    subprocess.run([f"{SCRIPT_DIR}/{script}", *args], check=False)
+
+
+def push(meldung_id):
+    run("send_pushover.sh", meldung_id)
+
+
+def confirm_still_open():
+    """Mehrfach pruefen, um kurze Erschuetterungen/Prellen auszuschliessen."""
+    for _ in range(CONFIRM_ROUNDS):
+        if not door_is_open():
+            return False
+        time.sleep(CONFIRM_DELAY)
+    return door_is_open()
+
+
+def lade_foto_zeitplan():
+    zeitplan = dict(FOTO_ZEITPLAN_STANDARD)
+    if os.path.isfile(FOTO_ZEITPLAN_PATH):
+        try:
+            with open(FOTO_ZEITPLAN_PATH) as f:
+                zeitplan.update(json.load(f))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return zeitplan
+
+
+def dunkle_fotos_aufraeumen(sitzung_start):
+    """Loescht zu dunkle Fotos EINER Tueroeffnung (z.B. Tuer im Aufnahmemoment
+    noch fast zu, Biene direkt vor der Linse) - laeuft als Aufraeum-Durchgang
+    NACH dem Schliessen (in einem eigenen Thread, blockiert also nicht die
+    Tuerueberwachung), statt nach jedem einzelnen Foto: eine Helligkeitspruefung
+    pro Bild wuerde durch den Pillow-Start die Aufnahme-Taktung waehrend die
+    Tuer offen ist spuerbar ausbremsen. Betrachtet nur Fotos mit
+    Aenderungsdatum >= sitzung_start, damit aeltere/manuelle Einzelfotos
+    unberuehrt bleiben. Bei jedem Fehler (Pillow fehlt, Bild kaputt) wird das
+    jeweilige Foto NICHT geloescht (Fail-Open)."""
+    einstellungen = lade_foto_zeitplan()
+    if not einstellungen.get("dunkle_fotos_loeschen"):
+        return
+    schwelle = einstellungen.get("helligkeitsschwelle", 25)
+    try:
+        from PIL import Image, ImageStat
+    except ImportError:
+        return
+    try:
+        dateinamen = os.listdir(BILDER_DIR)
+    except OSError:
+        return
+    for name in dateinamen:
+        if not name.lower().endswith((".jpg", ".jpeg")):
+            continue
+        pfad = os.path.join(BILDER_DIR, name)
+        try:
+            # 2 Sek. Puffer: manche Dateisysteme runden Zeitstempel auf ganze
+            # Sekunden, sonst koennte ein Foto kurz nach sitzung_start faelschlich
+            # als "aelter" durchfallen und uebersprungen werden.
+            if os.path.getmtime(pfad) < sitzung_start - 2:
+                continue
+            helligkeit = ImageStat.Stat(Image.open(pfad).convert("L")).mean[0]
+            if helligkeit < schwelle:
+                os.remove(pfad)
+        except (OSError, ValueError):
+            continue
+
+
+def warte_waehrend_offen(gesamt_timeout, eskalationen):
+    """Pollt bis die Tuer zu ist, gesamt_timeout erreicht ist, oder ein
+    Neustart des Zyklus angefordert wurde. Macht waehrend die Tuer offen ist
+    laufend Fotos nach Zeitplan (bis max_anzahl, zunaechst alle intervall_1
+    Sek., ab schwelle_sekunden seltener alle intervall_2 Sek.) und loest die
+    in `eskalationen` angegebenen Push-Scripte genau einmal aus, wenn ihr
+    Zeitpunkt (Sek. seit Tueroeffnung) erreicht wird.
+    Gibt "geschlossen", "timeout" oder "neustart" zurueck."""
+    zeitplan = lade_foto_zeitplan()
+    intervall_1 = zeitplan["intervall_1"]
+    schwelle = zeitplan["schwelle_sekunden"]
+    intervall_2 = zeitplan["intervall_2"]
+    max_anzahl = zeitplan["max_anzahl"]
+
+    anzahl_fotos = 0
+    naechstes_foto = 0
+    ausgeloest = set()
+    elapsed = 0
+
+    while elapsed < gesamt_timeout:
+        if neustart_angefordert():
+            return "neustart"
+
+        if not door_is_open():
+            return "geschlossen"
+
+        if anzahl_fotos < max_anzahl and elapsed >= naechstes_foto:
+            run("foto.sh")
+            anzahl_fotos += 1
+            aktuelles_intervall = intervall_1 if elapsed < schwelle else intervall_2
+            naechstes_foto = elapsed + aktuelles_intervall
+
+        for zeitpunkt, meldung_id in eskalationen:
+            if zeitpunkt not in ausgeloest and elapsed >= zeitpunkt:
+                ausgeloest.add(zeitpunkt)
+                push(meldung_id)
+
+        time.sleep(LOOP_TICK)
+        elapsed += LOOP_TICK
+
+    return "geschlossen" if not door_is_open() else "timeout"
+
+
+def behandle_tueroeffnung():
+    """Deckt eine komplette Tueroeffnung ab (Meldung, Foto-Zeitplan,
+    Eskalationen) - startet intern komplett neu, wenn per Simulation bei
+    bereits offener Tuer ein Neustart angefordert wird, ohne dass die Tuer
+    dafuer wirklich schliessen muss."""
+    while True:
+        neustart_angefordert()  # evtl. veraltetes Signal verwerfen, bevor es losgeht
+        sitzung_start = time.time()
+
+        print("Tür wurde geöffnet")
+        time.sleep(2)  # wie zuvor in push.sh
+        push("geoeffnet")
+
+        eskalationen = [
+            (WAIT_ESCALATE_1, "eskalation1"),
+            (WAIT_ESCALATE_1 + WAIT_ESCALATE_2, "eskalation2"),
+        ]
+        ergebnis = warte_waehrend_offen(WAIT_ESCALATE_1 + WAIT_ESCALATE_2, eskalationen)
+
+        if ergebnis == "neustart":
+            print("Simulation: Türöffnung wird als neu behandelt")
+            continue
+
+        threading.Thread(target=dunkle_fotos_aufraeumen, args=(sitzung_start,), daemon=True).start()
+
+        if ergebnis == "geschlossen":
+            print("Tür wieder zu !")
+            push("geschlossen")
+            return
+        print("Tür weiterhin offen nach maximaler Eskalationszeit")
+        return
+
+
+time.sleep(5)  # 3 Sek. urspruengliche Startverzoegerung + 2 Sek. wie zuvor in push-boot.sh
+push("boot")
+
+while True:
+    if door_is_open():
+        time.sleep(WAIT_CONFIRM)
+        if confirm_still_open():
+            behandle_tueroeffnung()
+
+    time.sleep(LOOP_DELAY)

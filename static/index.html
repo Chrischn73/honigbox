@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1e1a14">
+  <meta name="color-scheme" content="light dark">
+  <script>try{var t=localStorage.getItem('honigbox-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+  <title>BeeTown HonigBox</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-titel">
+      <h1>BeeTown HonigBox <span id="app-version-tag" class="app-version-tag"></span></h1>
+      <div class="topbar-by">
+        by <img src="./imkerei-logo.jpeg" alt="Imkerei Frerichs" class="topbar-logo">
+      </div>
+    </div>
+  </header>
+
+  <div class="status-leiste">
+    <span id="status-raspi" class="status-badge">⏳ Lade Status…</span>
+    <span id="status-dienst" class="status-badge">⏳ Lade Status…</span>
+    <span id="status-tuer" class="status-badge">⏳ Lade Status…</span>
+  </div>
+
+  <nav class="haupt-tabs">
+    <button class="haupt-tab-btn" id="haupt-tab-fotos" data-ansicht="fotos">📷 Fotos</button>
+    <button class="haupt-tab-btn" id="haupt-tab-einstellungen" data-ansicht="einstellungen">⚙️ Einstellungen</button>
+  </nav>
+
+  <main id="app">
+    <section id="ansicht-fotos" class="ansicht">
+      <div class="toolbar">
+        <button class="btn" id="tab-fotos">Aktuelle Fotos</button>
+        <button class="btn" id="tab-archiv">Archiv</button>
+        <button class="btn btn-primary" id="btn-foto-aufnehmen">📷 Foto aufnehmen</button>
+        <label class="alle-auswahl">
+          <input type="checkbox" id="alle-auswaehlen-cb"> Alle auswählen
+        </label>
+      </div>
+
+      <div id="galerie-grid"></div>
+    </section>
+
+    <section id="ansicht-einstellungen" class="ansicht hidden">
+      <details class="kamera-details" open>
+        <summary>📷 Fotos</summary>
+        <div id="foto-zeitplan-felder" class="kamera-felder"></div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="foto-zeitplan-speichern">Speichern</button>
+          <button class="btn btn-sm btn-ghost" id="foto-zeitplan-zuruecksetzen">Zurücksetzen auf Standard</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>💾 Speicherort</summary>
+        <p class="muted test-hinweis">Bestimmt, wo aktuelle (noch nicht archivierte) Fotos abgelegt werden. Das Archiv bleibt davon unberührt und liegt immer auf der SD-Karte.</p>
+        <div class="kamera-felder">
+          <div class="kamera-feld">
+            <label for="speicher-ort">Speicherort</label>
+            <select id="speicher-ort">
+              <option value="ram">RAM-Speicher (schneller, schont die SD-Karte)</option>
+              <option value="platte">SD-Karte (bleibt auch bei Stromausfall erhalten)</option>
+            </select>
+          </div>
+          <div class="kamera-feld" id="speicher-groesse-feld">
+            <label for="speicher-groesse">Größe des RAM-Speichers (MB)</label>
+            <input type="number" id="speicher-groesse" min="32" max="2048" step="16">
+          </div>
+        </div>
+        <p class="muted" id="speicher-info">Lade Speicher-Informationen…</p>
+        <p class="warnhinweis">⚠️ Fotos im RAM-Speicher gehen bei jedem Neustart/Herunterfahren/Stromausfall verloren, wenn sie vorher nicht archiviert wurden. Beim Umschalten werden bestehende Fotos automatisch mitgenommen, beide Dienste starten dabei kurz neu.</p>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="speicher-uebernehmen">Übernehmen</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>📸 Kamera-Einstellungen</summary>
+        <div id="kamera-felder" class="kamera-felder"></div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="kamera-speichern">Speichern</button>
+          <button class="btn btn-sm btn-ghost" id="kamera-zuruecksetzen">Zurücksetzen auf Standard</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>🔔 Pushover-Einstellungen</summary>
+        <div class="kamera-felder">
+          <div class="kamera-feld">
+            <label for="pushover-token">Pushover App-Token</label>
+            <input type="text" id="pushover-token">
+          </div>
+          <div class="kamera-feld">
+            <label for="pushover-user">Pushover User-Key</label>
+            <input type="text" id="pushover-user">
+          </div>
+        </div>
+        <div id="pushover-meldungen" class="pushover-meldungen"></div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="pushover-speichern">Speichern</button>
+          <button class="btn btn-sm btn-ghost" id="pushover-alle-aktivieren">Alle aktivieren</button>
+          <button class="btn btn-sm btn-ghost" id="pushover-alle-deaktivieren">Alle deaktivieren</button>
+          <button class="btn btn-sm btn-ghost" id="pushover-test">📨 Test senden</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>🧪 Simulation</summary>
+        <p class="muted test-hinweis">Simuliert eine echte Türöffnung (löst Pushover-Meldungen und Fotos wie beim echten Öffnen aus) – zum Testen vom Sofa aus, ohne den Schalter anzufassen. Funktioniert auch, wenn die Tür gerade schon offen ist: startet den Zyklus dann einfach von vorne, praktisch zum Durchtesten/Anpassen der Foto-Einstellungen.</p>
+        <div class="kamera-felder">
+          <div class="kamera-feld">
+            <label for="sim-minuten">Dauer – Minuten</label>
+            <input type="number" id="sim-minuten" min="0" max="30" step="1">
+          </div>
+          <div class="kamera-feld">
+            <label for="sim-sekunden">Dauer – Sekunden</label>
+            <input type="number" id="sim-sekunden" min="0" max="59" step="1">
+          </div>
+        </div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-ghost" id="sim-dauer-speichern">Dauer speichern</button>
+        </div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-ghost" id="btn-tuer-simulieren">🚪 Türöffnung simulieren</button>
+        </div>
+      </details>
+
+      <details class="kamera-details system-details">
+        <summary>⚡ System</summary>
+        <p class="warnhinweis" id="ram-neustart-warnung" hidden>⚠️ Fotos liegen aktuell im RAM-Speicher (Einstellung unter „📷 Fotos“ → „Speicherort“) – bei Neustart/Herunterfahren gehen alle noch nicht archivierten Fotos dabei verloren.</p>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-ghost" id="btn-dienste-neustart">🔁 Dienste neu starten</button>
+          <button class="btn btn-sm btn-danger" id="btn-neustart">🔄 Pi neu starten</button>
+          <button class="btn btn-sm btn-danger" id="btn-herunterfahren">⏻ Pi herunterfahren</button>
+        </div>
+      </details>
+
+      <hr class="spenden-trenner">
+      <div class="spenden-box">
+        <p>BeeTown HonigBox ist kostenlos, werbefrei und ganz ohne Tracking. Wenn dir die App im Imker-Alltag hilft, freue ich mich über eine kleine Spende für Kaffee &amp; Weiterentwicklung. 🐝☕</p>
+        <a class="btn btn-ghost" href="https://www.paypal.com/donate/?hosted_button_id=F7WE7N68TBAKE" target="_blank" rel="noopener">☕ BeeTown HonigBox unterstützen</a>
+      </div>
+      <div class="spenden-box">
+        <p>Idee, Wunsch oder einen Fehler gefunden? Ich freue mich über Feedback.</p>
+        <a class="btn btn-ghost" href="mailto:beetown@cfrerichs.de?subject=BeeTown%20HonigBox%20Verbesserungsvorschlag">✉️ Verbesserungsvorschlag senden</a>
+      </div>
+    </section>
+  </main>
+
+  <div id="auswahl-leiste" class="auswahl-leiste hidden">
+    <span class="auswahl-anzahl"></span>
+    <button class="btn btn-sm btn-ghost" id="btn-auswahl-aufheben">Auswahl aufheben</button>
+    <button class="btn btn-sm btn-ghost" id="btn-archivieren-batch">Archivieren</button>
+    <button class="btn btn-sm btn-danger" id="btn-loeschen-batch">Löschen</button>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

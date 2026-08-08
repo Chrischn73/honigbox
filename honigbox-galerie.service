@@ -1,0 +1,27 @@
+[Unit]
+Description=HonigBox Galerie – Foto-Verwaltung
+After=network.target
+# Siehe honigbox.service - stellt sicher, dass eine evtl. konfigurierte
+# RAM-Disk fuer die Fotos bereits eingehaengt ist, bevor dieser Dienst startet.
+RequiresMountsFor=/opt/honigbox/fotos/Bilder
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/honigbox
+ExecStart=/usr/bin/python3 /opt/honigbox/galerie_server.py
+Environment=GALERIE_HOST=0.0.0.0
+Environment=GALERIE_PORT=8090
+Environment=GALERIE_STATIC=/opt/honigbox/static
+Environment=GALERIE_BILDER=/opt/honigbox/fotos/Bilder
+Environment=GALERIE_ARCHIV=/opt/honigbox/fotos/Archiv
+Environment=PYTHONUNBUFFERED=1
+# Zum Absichern per Basic-Auth zwei Zeilen einkommentieren und Werte setzen:
+#Environment=GALERIE_USER=honig
+#Environment=GALERIE_PASSWORT=aendern
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=HonigBox – taegliches Backup nach /opt/backup
+After=honigbox.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/backup-scripts/honigbox-backup.sh

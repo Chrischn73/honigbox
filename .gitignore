@@ -1,0 +1,12 @@
+# Enthaelt echte Pushover-Zugangsdaten - niemals committen.
+# Wird von galerie_server.py/send_pushover.sh nur noch als Migrationsquelle
+# gelesen, falls die Web-UI-Einstellungen noch fehlen (siehe README/Code).
+pushover.conf
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor-/OS-Muell
+.DS_Store
+*.swp

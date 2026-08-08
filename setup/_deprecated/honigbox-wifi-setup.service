@@ -1,0 +1,17 @@
+[Unit]
+Description=HonigBox – Setup-Seite inkl. WLAN-Einstellungen (Port 80)
+After=NetworkManager.service
+Wants=NetworkManager.service
+# Bewusst KEIN Before=honigbox-galerie.service: die Galerie soll unabhaengig
+# davon sofort starten, auch wenn WLAN nie eingerichtet wird (reine Kabelnutzung).
+
+[Service]
+Type=simple
+# Nur vorhanden, falls Port 80 beim Einrichten schon belegt war (siehe install.sh)
+EnvironmentFile=-/etc/default/honigbox-wifi-setup
+ExecStart=/opt/honigbox-wifi-setup/honigbox-wifi-setup.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
