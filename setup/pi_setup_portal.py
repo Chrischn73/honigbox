@@ -61,6 +61,12 @@ kein Foto-Handling, nichts), es kennt nur das generische Schema.
 - /update: pro App ein Abschnitt (Version pruefen/aktualisieren/
   zurueckwechseln, automatische Updates), ein gemeinsamer
   "Alle aktualisieren"-Button
+- Startseite: zusaetzlich pro installierter App ein Hinweis+Button, falls
+  ihr Descriptor ein optionales "companion"-Feld setzt (Partner-App, die
+  noch nicht registriert ist) - laedt deren neuestes GitHub-Release herunter
+  und fuehrt dessen setup/install.sh aus (siehe _run_companion_install_in_
+  background). Rein deklarativ: dieses Skript kennt auch dabei keine
+  App-Namen, nur was im "companion"-Objekt steht.
 
 Nur Python-Standardbibliothek.
 """
@@ -69,6 +75,7 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import socket
 import subprocess
@@ -82,7 +89,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
 
-PORTAL_VERSION = "1.1.0"
+PORTAL_VERSION = "1.3.0"
 
 PORTAL_DIR = "/opt/pi-setup-portal"
 # Jede App legt hier per eigenem install.sh genau eine Datei <app-id>.json
@@ -114,6 +121,26 @@ FORMAT_STATE = {"done": True, "ok": None, "detail": None}
 # "Alle aktualisieren") - anders als CONN_STATE/FORMAT_STATE, die als
 # global inhaerent nur einen Vorgang gleichzeitig kennen.
 UPDATE_STATE = {}
+
+# Analog zu UPDATE_STATE, aber fuer das Nachinstallieren einer Partner-App
+# (siehe "companion"-Feld im Descriptor) - bewusst NICHT UPDATE_STATE
+# mitbenutzt: die GET /update/status/<id>-Route lehnt unbekannte App-IDs
+# frueh ab (siehe dortiger Kommentar), waehrend eine Partner-App per
+# Definition WAEHREND der Installation noch KEINEN eigenen apps.d/-Eintrag
+# hat - genau dann muss das Polling trotzdem funktionieren.
+COMPANION_INSTALL_STATE = {}
+
+
+def _companion_install_state(app_id):
+    return COMPANION_INSTALL_STATE.setdefault(app_id, {"done": True, "ok": None, "detail": None})
+
+
+def _known_companion_ids():
+    """Alle App-IDs, die IRGENDEINE aktuell registrierte App als 'companion'
+    deklariert - Whitelist fuer GET /companion/install/status/<id>, damit
+    dort nicht beliebige Pfade COMPANION_INSTALL_STATE unbegrenzt wachsen
+    lassen koennen (gleiches Muster wie bei GET /update/status/<id>)."""
+    return {app["companion"]["app_id"] for app in load_apps() if app.get("companion")}
 
 
 def _update_state(app_id):
@@ -248,6 +275,7 @@ PAGE_LANDING = """<!doctype html>
 {status}
 {update_banner}
 {app_cards}
+{companion_section}
 {wifi_link}<a class="btn" href="/backup">📦 Backups</a>
 <a class="btn" href="/update">🔄 Update</a>
 <a class="btn" href="/hilfe" style="padding:.5rem; font-size:.85rem;">❓ Hilfe</a>
@@ -256,6 +284,40 @@ PAGE_LANDING = """<!doctype html>
 {ip_lines}
 </div>
 {system_buttons}
+
+<div id="companion-install-modal" class="modal-backdrop">
+  <div class="modal-box" id="companion-install-modal-content"></div>
+</div>
+<script>
+function companionInstallPoll(appId, content) {{
+  fetch('/companion/install/status/' + appId).then(r => r.json()).then(function(d) {{
+    if (!d.done) {{ setTimeout(function() {{ companionInstallPoll(appId, content); }}, 3000); return; }}
+    content.innerHTML = d.ok
+      ? '<div class="msg ok">✅ ' + d.detail + '</div>'
+      : '<div class="msg err">❌ ' + (d.detail || 'Installation abgebrochen.') + '</div>';
+    setTimeout(function() {{ window.location.reload(); }}, 3000);
+  }}).catch(function() {{ setTimeout(function() {{ companionInstallPoll(appId, content); }}, 3000); }});
+}}
+function startCompanionInstall(hostAppId, companionAppId, companionLabel) {{
+  if (!confirm(companionLabel + ' jetzt automatisch von GitHub herunterladen und installieren?')) {{
+    return false;
+  }}
+  var modal = document.getElementById('companion-install-modal');
+  var content = document.getElementById('companion-install-modal-content');
+  content.innerHTML = '<h1>""" + SPINNER_SVG + """Installiere ' + companionLabel + '…</h1>' +
+    '<p class="muted">Neueste Version wird von GitHub geladen und eingerichtet. ' +
+    'Das kann einige Minuten dauern – bitte die Seite nicht schließen.</p>';
+  modal.classList.add('show');
+  fetch('/companion/install/' + hostAppId, {{method: 'POST'}}).then(r => r.json()).then(function(d) {{
+    if (!d.started) {{
+      content.innerHTML = '<div class="msg err">❌ ' + (d.error || 'Konnte nicht gestartet werden.') + '</div>';
+      return;
+    }}
+    companionInstallPoll(companionAppId, content);
+  }});
+  return false;
+}}
+</script>
 </body></html>
 """
 
@@ -735,6 +797,13 @@ setTimeout(function() {
 # App-Registry
 # --------------------------------------------------------------------------
 
+# Optionale Felder (nicht in _REQUIRED_TOP_LEVEL_FIELDS, weil ein Descriptor
+# ohne sie trotzdem vollstaendig gueltig ist):
+#   "donate": {"text", "url", "button_label"} - Spenden-Hinweis auf der Startseite.
+#   "companion": {"app_id", "label", "github_repo"} + optional "emoji",
+#     "install_script_path" (Default "setup/install.sh") - Partner-App, die
+#     sich per Button dieser App aus nachinstallieren laesst (siehe
+#     render_landing()/_run_companion_install_in_background()).
 _REQUIRED_TOP_LEVEL_FIELDS = (
     "id", "label", "emoji", "app_port_default", "app_port_env_file", "app_port_env_var",
     "backup", "update",
@@ -1064,17 +1133,37 @@ def _restore_from_tar(app, tar, label):
     target_dir = backup_cfg["restore_target_dir"]
     stop_services = backup_cfg.get("restore_stop_services", [])
     start_services = backup_cfg.get("restore_start_services", [])
+    pre_hook = backup_cfg.get("pre_restore_hook")
+    post_hook = backup_cfg.get("post_restore_hook")
 
     def _restart_services():
         for svc in start_services:
             subprocess.run(["systemctl", "start", svc], capture_output=True, text=True)
 
+    def _run_hook(hook_cmd):
+        # Generischer Erweiterungspunkt fuer Apps, die vor/nach dem Restore
+        # noch etwas Eigenes erledigen muessen - z.B. HonigBox: falls
+        # restore_target_dir einen aktiven tmpfs-Mount (RAM-Disk) enthaelt,
+        # wuerde das rmtree() weiter unten versehentlich dessen Inhalt
+        # loeschen UND den Mount hinterher verwaist zuruecklassen. Der Hook
+        # schaltet dafuer vorher auf Platte um und danach wieder zurueck.
+        # hook_cmd ist ein simpler, von der App selbst vorgegebener Text
+        # (kein Nutzereingabe-Pfad) - shlex.split() reicht daher aus.
+        if not hook_cmd:
+            return
+        try:
+            subprocess.run(shlex.split(hook_cmd), capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            pass  # Hook-Fehler duerfen den eigentlichen Restore nicht verhindern
+
     for svc in stop_services:
         subprocess.run(["systemctl", "stop", svc], capture_output=True, text=True)
+    _run_hook(pre_hook)
     try:
         members = [m for m in tar.getmembers()
                    if m.name == prefix or m.name.startswith(prefix + "/")]
         if not members:
+            _run_hook(post_hook)
             _restart_services()
             return False, f"'{prefix}' nicht im Archiv gefunden."
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1107,8 +1196,10 @@ def _restore_from_tar(app, tar, label):
             subprocess.run(["chown", "-R", backup_cfg["restore_owner"], target_dir],
                             capture_output=True, text=True)
     except (OSError, tarfile.TarError) as e:
+        _run_hook(post_hook)
         _restart_services()
         return False, f"Fehler bei der Wiederherstellung: {e}"
+    _run_hook(post_hook)
     _restart_services()
     restored_label = backup_cfg.get("restored_label", "Daten")
     return True, f"{restored_label} aus '{label}' wiederhergestellt – {app['label']} läuft wieder."
@@ -1527,8 +1618,11 @@ def parse_version(v):
     return tuple(parts) or (0,)
 
 
-def fetch_latest_release(app):
-    repo = app["update"]["github_repo"]
+def _fetch_latest_release_for_repo(repo):
+    """Kern von fetch_latest_release() - auf den blanken Repo-String
+    ('Nutzer/Repo') statt auf ein volles App-Objekt bezogen, damit auch das
+    Nachinstallieren einer noch unregistrierten Partner-App (die ja noch
+    kein app['update']-Objekt hat) dieselbe Abfrage nutzen kann."""
     try:
         req = urllib.request.Request(
             f"https://api.github.com/repos/{repo}/releases/latest",
@@ -1542,6 +1636,10 @@ def fetch_latest_release(app):
         return {"tag": tag, "notes": (data.get("body") or "").strip(), "tarball_url": data.get("tarball_url") or ""}
     except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError):
         return None
+
+
+def fetch_latest_release(app):
+    return _fetch_latest_release_for_repo(app["update"]["github_repo"])
 
 
 def fetch_all_releases(app, limit=10):
@@ -1768,6 +1866,58 @@ def _run_update_all_in_background():
         UPDATE_STATE["_all"] = {"done": True, "ok": False, "detail": f"Unerwarteter Fehler: {e}"}
 
 
+def _run_companion_install_in_background(companion):
+    """Laedt das neueste GitHub-Release der Partner-App herunter und fuehrt
+    deren eigenes setup/install.sh aus - bewusst KEIN Nachbau der
+    Installationslogik hier (die steckt bereits vollstaendig, getestet und
+    gepflegt in install.sh selbst: apt-Pakete, systemd-Dienste, Hostname,
+    Kamera/GPIO usw.). Dieses Skript hier laeuft laut pi-setup-portal.service
+    bereits als root, ein "sudo" vor dem bash-Aufruf ist deshalb nicht
+    noetig - install.sh prueft selbst per 'id -u', dass es als root laeuft."""
+    app_id = companion["app_id"]
+    try:
+        release = _fetch_latest_release_for_repo(companion["github_repo"])
+        if not release or not release.get("tarball_url"):
+            _companion_install_state(app_id).update(
+                done=True, ok=False, detail="Neueste Version konnte nicht ermittelt werden.")
+            return
+        req = urllib.request.Request(release["tarball_url"], headers={"User-Agent": "Pi-Setup-Companion-Install"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            archive_data = resp.read()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with tarfile.open(fileobj=io.BytesIO(archive_data), mode="r:gz") as tar:
+                tar.extractall(path=tmpdir, filter="data")
+            entries = os.listdir(tmpdir)
+            if len(entries) != 1:
+                _companion_install_state(app_id).update(
+                    done=True, ok=False, detail="Unerwarteter Archivinhalt (GitHub-Tarball-Struktur hat sich geaendert).")
+                return
+            src_root = os.path.join(tmpdir, entries[0])
+            script = os.path.join(src_root, companion.get("install_script_path", "setup/install.sh"))
+            if not os.path.isfile(script):
+                _companion_install_state(app_id).update(
+                    done=True, ok=False, detail=f"Installationsskript nicht gefunden ({companion.get('install_script_path', 'setup/install.sh')}).")
+                return
+            # Kann je nach App mehrere Minuten dauern (apt-get, Kamera-Setup
+            # usw.) - grosszuegiges Timeout, damit ein echter Haenger
+            # trotzdem irgendwann als Fehler zurueckkommt statt den Thread
+            # fuer immer zu blockieren.
+            result = subprocess.run(["bash", script], cwd=src_root, capture_output=True, text=True, timeout=1800)
+            if result.returncode == 0:
+                _companion_install_state(app_id).update(
+                    done=True, ok=True, detail=f"{companion['label']} wurde installiert.")
+            else:
+                fehlerausgabe = (result.stderr or result.stdout or "").strip()[-800:]
+                _companion_install_state(app_id).update(
+                    done=True, ok=False,
+                    detail=f"Installation fehlgeschlagen (Exit-Code {result.returncode}): {fehlerausgabe}")
+    except subprocess.TimeoutExpired:
+        _companion_install_state(app_id).update(
+            done=True, ok=False, detail="Installation hat zu lange gedauert (Timeout).")
+    except Exception as e:
+        _companion_install_state(app_id).update(done=True, ok=False, detail=f"Unerwarteter Fehler: {e}")
+
+
 def render_update_card(app, message=""):
     app_id = app["id"]
     current = app_version(app)
@@ -1893,6 +2043,28 @@ def render_landing(request_host=None):
                 )
         app_cards = "".join(parts)
 
+    # Fuer jede installierte App mit "companion"-Feld, deren Partner-App
+    # NOCH NICHT registriert ist (kein eigener apps.d/-Eintrag) - Button
+    # startet den Download+install.sh-Lauf, siehe _run_companion_install_
+    # in_background(). Sind beide Apps schon installiert, deklariert also
+    # z.B. sowohl HonigBox als auch BeeTown den anderen als companion,
+    # verschwinden hier automatisch beide Karten.
+    installed_ids = {a["id"] for a in apps}
+    companion_parts = []
+    for app in apps:
+        comp = app.get("companion")
+        if not comp or comp["app_id"] in installed_ids:
+            continue
+        companion_parts.append(
+            '<div class="msg" style="text-align:center;">'
+            f'<p>{comp.get("emoji", "⬇️")} <strong>{html.escape(comp["label"])}</strong> '
+            'ist auf diesem Pi noch nicht installiert.</p>'
+            f'<button class="btn" onclick="return startCompanionInstall(\'{app["id"]}\', '
+            f'\'{comp["app_id"]}\', \'{comp["label"]}\')">⬇️ {html.escape(comp["label"])} installieren</button>'
+            '</div>'
+        )
+    companion_section = "".join(companion_parts)
+
     update_banner_parts = []
     for app in apps:
         state = read_update_check_state(app)
@@ -1918,6 +2090,7 @@ def render_landing(request_host=None):
         status=status_banner() if IS_PI else "",
         update_banner=update_banner,
         app_cards=app_cards,
+        companion_section=companion_section,
         wifi_link='<a class="btn" href="/wifi">📶 WLAN-Einstellungen</a>\n' if IS_PI else "",
         ip_lines=ip_lines,
         system_buttons=SYSTEM_BUTTONS if IS_PI else "",
@@ -2084,6 +2257,14 @@ class BaseHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(_update_state(app_id))
             return
+        m = re.match(r"^/companion/install/status/([^/]+)$", path)
+        if m:
+            comp_id = unquote(m.group(1))
+            if comp_id not in _known_companion_ids():
+                self._send_json({"done": True, "ok": None, "detail": None})
+                return
+            self._send_json(_companion_install_state(comp_id))
+            return
         if path in ("/wifi", "/wifi/status", "/wifi/networks") and not IS_PI:
             self._not_found()
             return
@@ -2216,6 +2397,24 @@ class BaseHandler(BaseHTTPRequestHandler):
                 return
             _update_state(app["id"]).update(done=False, ok=None, detail=None)
             threading.Thread(target=_run_update_in_background, args=(app,), daemon=True).start()
+            self._send_json({"started": True})
+            return
+        m = re.match(r"^/companion/install/([^/]+)$", path)
+        if m:
+            host_app = get_app(unquote(m.group(1)))
+            companion = host_app.get("companion") if host_app else None
+            if not companion:
+                self._not_found()
+                return
+            comp_id = companion["app_id"]
+            if get_app(comp_id):
+                self._send_json({"started": False, "error": f"{companion['label']} ist bereits installiert."})
+                return
+            if _companion_install_state(comp_id).get("done") is False:
+                self._send_json({"started": False, "error": "Installation läuft bereits."})
+                return
+            _companion_install_state(comp_id).update(done=False, ok=None, detail=None)
+            threading.Thread(target=_run_companion_install_in_background, args=(companion,), daemon=True).start()
             self._send_json({"started": True})
             return
         if path == "/update/run-all":

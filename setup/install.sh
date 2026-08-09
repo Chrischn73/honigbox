@@ -57,7 +57,7 @@ for f in honigbox.sh foto.sh send_pushover.sh galerie_server.py speicher_umschal
 done
 for f in pi_setup_portal.py pi-setup-portal.sh pi-setup-portal.service regen-issue.sh \
          honigbox-backup.sh honigbox-backup-rotate.py honigbox-backup.service honigbox-backup.timer \
-         honigbox-update-check.service honigbox-update-check.timer; do
+         honigbox-update-check.service honigbox-update-check.timer honigbox-restore-hook.sh; do
     if [ ! -e "$SETUP_DIR/$f" ]; then
         echo "FEHLER: $SETUP_DIR/$f fehlt."
         exit 1
@@ -167,12 +167,14 @@ sicher_kopieren "$PROJECT_DIR/foto.sh" /opt/honigbox/foto.sh
 sicher_kopieren "$PROJECT_DIR/send_pushover.sh" /opt/honigbox/send_pushover.sh
 sicher_kopieren "$PROJECT_DIR/galerie_server.py" /opt/honigbox/galerie_server.py
 sicher_kopieren "$PROJECT_DIR/speicher_umschalten.sh" /opt/honigbox/speicher_umschalten.sh
+sicher_kopieren "$SETUP_DIR/honigbox-restore-hook.sh" /opt/honigbox/honigbox-restore-hook.sh
 sicher_kopiere_ordner "$PROJECT_DIR/static" /opt/honigbox/static
 
-# Wichtig: die vier Shell-Scripte brauchen das Ausfuehrungsrecht, sonst
-# bricht honigbox.sh beim Aufruf mit "Permission denied" ab (ist uns schon
-# einmal so passiert).
-chmod +x /opt/honigbox/honigbox.sh /opt/honigbox/foto.sh /opt/honigbox/send_pushover.sh /opt/honigbox/speicher_umschalten.sh
+# Wichtig: die Shell-Scripte brauchen das Ausfuehrungsrecht, sonst bricht
+# honigbox.sh beim Aufruf mit "Permission denied" ab (ist uns schon einmal
+# so passiert).
+chmod +x /opt/honigbox/honigbox.sh /opt/honigbox/foto.sh /opt/honigbox/send_pushover.sh \
+    /opt/honigbox/speicher_umschalten.sh /opt/honigbox/honigbox-restore-hook.sh
 
 # Pushover-Zugangsdaten nur beim allerersten Einrichten anlegen, damit ein
 # spaeter ueber die Web-UI gespeicherter echter Token bei einem erneuten
@@ -333,6 +335,8 @@ cat > /opt/pi-setup-portal/apps.d/honigbox.json << JSONEOF
     "restore_chmod": "777",
     "restore_stop_services": ["honigbox.service", "honigbox-galerie.service"],
     "restore_start_services": ["honigbox.service", "honigbox-galerie.service"],
+    "pre_restore_hook": "/opt/honigbox/honigbox-restore-hook.sh pre",
+    "post_restore_hook": "/opt/honigbox/honigbox-restore-hook.sh post",
     "restored_label": "Fotos"
   },
   "update": {
@@ -345,11 +349,18 @@ cat > /opt/pi-setup-portal/apps.d/honigbox.json << JSONEOF
       {"src": "send_pushover.sh", "dest": "/opt/honigbox/send_pushover.sh", "mode": "0755"},
       {"src": "galerie_server.py", "dest": "/opt/honigbox/galerie_server.py", "mode": "0644", "chown": "www-data:www-data"},
       {"src": "speicher_umschalten.sh", "dest": "/opt/honigbox/speicher_umschalten.sh", "mode": "0755"},
+      {"src": "setup/honigbox-restore-hook.sh", "dest": "/opt/honigbox/honigbox-restore-hook.sh", "mode": "0755"},
       {"src": "static", "dest": "/opt/honigbox/static", "mode": "dir", "chown": "www-data:www-data"},
       {"src": "honigbox.service", "dest": "/etc/systemd/system/honigbox.service", "mode": "0644"},
       {"src": "honigbox-galerie.service", "dest": "/etc/systemd/system/honigbox-galerie.service", "mode": "0644"}
     ],
     "services_to_restart": ["honigbox.service", "honigbox-galerie.service"]
+  },
+  "companion": {
+    "app_id": "imkerei",
+    "label": "BeeTown",
+    "emoji": "🐝",
+    "github_repo": "Chrischn73/beetown"
   }
 }
 JSONEOF
@@ -418,6 +429,16 @@ is_wifi_connected() {
         | awk -F: '$1=="wlan0" && $2=="connected" {found=1} END{exit !found}'
 }
 
+# Liefert die aktuelle IPv4-Adresse (erste von "hostname -I", meist die des
+# aktiven Interfaces) statt eines "*.local"-Namens - mDNS (Bonjour/Avahi) ist
+# je nach Router/Mesh/VLAN unzuverlaessig (siehe Hilfe-Seite in der App),
+# eine IP-Adresse funktioniert dagegen immer. Leer, falls noch kein Netzwerk
+# aktiv ist (z. B. ganz frisch gebootet, noch kein Kabel/WLAN) - dann faellt
+# der Aufrufer auf den Hostnamen zurueck.
+aktuelle_ip() {
+    hostname -I 2>/dev/null | awk '{print $1}'
+}
+
 # ---------------------------------------------------------------------------
 log "Status"
 # "|| true" ist hier wichtig: "systemctl status" gibt einen Exit-Code != 0
@@ -432,15 +453,24 @@ systemctl --no-pager status honigbox-galerie.service | head -5 || true
 echo
 systemctl --no-pager status pi-setup-portal.service | head -5 || true
 
-SETUP_URL="http://$(hostname).local"
+# IP jetzt statt vorher ".local"-Hostname ermitteln - mDNS ist je nach
+# Router/Mesh nicht immer zuverlaessig (siehe Hilfe-Seite), eine IP-Adresse
+# funktioniert dagegen immer. Faellt auf ".local" zurueck, falls noch gar
+# kein Netzwerk aktiv ist (dann kennt der Pi noch keine IP).
+IP_ANZEIGE="$(aktuelle_ip)"
+if [ -n "$IP_ANZEIGE" ]; then
+    SETUP_URL="http://$IP_ANZEIGE"
+else
+    SETUP_URL="http://$(hostname).local"
+fi
 [ "$LANDING_PORT" -ne 80 ] && SETUP_URL="$SETUP_URL:$LANDING_PORT"
 
 if [ "$IS_PI" -eq 1 ]; then
     # -----------------------------------------------------------------------
-    # Hostname-Entscheidung ZUERST, danach erst den Boot-Bildschirm
-    # schreiben - sonst landet die alte/neue Hostname-Variante inkonsistent
-    # in /etc/issue (z. B. "raspberrypi.local", obwohl der Pi gleich auf
-    # "honigbox" umbenannt wird und danach neu startet).
+    # Hostname-Entscheidung - wird fuer den SSH-Hinweis unten und den
+    # ".local"-Notfallpfad gebraucht, falls (noch) keine IP ermittelbar ist.
+    # Die Web-Links selbst haengen dank $IP_ANZEIGE NICHT vom Hostnamen ab,
+    # muessen bei einer Umbenennung also nicht neu gebaut werden.
     CURRENT_HOSTNAME="$(hostname)"
     EFFECTIVE_HOSTNAME="$CURRENT_HOSTNAME"
     HOSTNAME_CHANGED=0
@@ -449,10 +479,13 @@ if [ "$IS_PI" -eq 1 ]; then
         raspi-config nonint do_hostname "$NEW_HOSTNAME"
         EFFECTIVE_HOSTNAME="$NEW_HOSTNAME"
         HOSTNAME_CHANGED=1
-        SETUP_URL="http://$NEW_HOSTNAME.local"
-        [ "$LANDING_PORT" -ne 80 ] && SETUP_URL="$SETUP_URL:$LANDING_PORT"
     else
         log "Hostname bleibt unveraendert ('$CURRENT_HOSTNAME' ist nicht mehr der Pi-Standard '$DEFAULT_PI_HOSTNAME')"
+    fi
+    if [ -n "$IP_ANZEIGE" ]; then
+        HONIGBOX_URL="http://$IP_ANZEIGE:$GALERIE_PORT"
+    else
+        HONIGBOX_URL="http://$EFFECTIVE_HOSTNAME.local:$GALERIE_PORT"
     fi
 
     # -----------------------------------------------------------------------
@@ -460,20 +493,24 @@ if [ "$IS_PI" -eq 1 ]; then
     # /etc/issue wird aus Fragmenten zusammengesetzt (siehe regen-issue.sh) -
     # "00-" ist die gemeinsame Setup-URL (identischer Inhalt, egal welche
     # App sie zuletzt geschrieben hat), "10-" ist die HonigBox-eigene Zeile.
-    # Beide nutzen jetzt $EFFECTIVE_HOSTNAME/das schon aktualisierte
-    # $SETUP_URL statt der Werte von VOR der Hostname-Entscheidung.
+    # "\4" ist eine agetty-Escape-Sequenz (siehe regen-issue.sh/agetty(8)) -
+    # wird bei JEDEM Boot/Login-Prompt live neu aufgeloest, zeigt also immer
+    # die aktuelle IP, statt eine einmal zur Install-Zeit eingefrorene und
+    # ggf. nach einem DHCP-Wechsel veraltete Adresse.
+    ISSUE_PORT_SUFFIX=""
+    [ "$LANDING_PORT" -ne 80 ] && ISSUE_PORT_SUFFIX=":$LANDING_PORT"
     cat > /opt/pi-setup-portal/issue.d/00-setup-url.txt << EOF
-   Setup / WLAN:        $SETUP_URL
+   Setup / WLAN:        http://\4$ISSUE_PORT_SUFFIX
 EOF
     cat > /opt/pi-setup-portal/issue.d/10-honigbox.txt << EOF
-   BeeTown HonigBox:    http://$EFFECTIVE_HOSTNAME.local:$GALERIE_PORT
+   BeeTown HonigBox:    http://\4:$GALERIE_PORT
 EOF
     /opt/pi-setup-portal/regen-issue.sh
 
     echo
     echo "======================================================================"
     echo " Setup / WLAN:        $SETUP_URL"
-    echo " BeeTown HonigBox:    http://$EFFECTIVE_HOSTNAME.local:$GALERIE_PORT"
+    echo " BeeTown HonigBox:    $HONIGBOX_URL"
     echo " WLAN-Einstellungen:  $SETUP_URL/wifi (immer erreichbar)"
     echo " Backups:             $SETUP_URL/backup"
     echo " Update:              $SETUP_URL/update"
@@ -508,10 +545,15 @@ EOF
         echo "Hostname war bereits angepasst - kein Neustart erforderlich. Fertig."
     fi
 else
+    if [ -n "$IP_ANZEIGE" ]; then
+        HONIGBOX_URL="http://$IP_ANZEIGE:$GALERIE_PORT"
+    else
+        HONIGBOX_URL="http://$(hostname).local:$GALERIE_PORT"
+    fi
     echo
     echo "======================================================================"
     echo " Setup / WLAN:      $SETUP_URL"
-    echo " BeeTown HonigBox:  http://$(hostname).local:$GALERIE_PORT"
+    echo " BeeTown HonigBox:  $HONIGBOX_URL"
     echo "======================================================================"
     echo " Fertig - kein Neustart erforderlich."
 fi

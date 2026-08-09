@@ -29,6 +29,7 @@ KAMERA_CONF="/opt/honigbox/einstellungen/.kamera-einstellungen.sh"
 : "${RAUSCHUNTERDRUECKUNG:=cdn_fast}"
 : "${FOKUS_MODUS:=auto}"
 : "${FOKUS_POSITION:=4.0}"
+: "${AUFNAHME_VERZOEGERUNG_MS:=1000}"
 : "${BREITE:=2304}"
 : "${HOEHE:=1296}"
 : "${JPEG_QUALITAET:=90}"
@@ -42,13 +43,14 @@ KAMERA_ARGS=(--datetime -n --width "$BREITE" --height "$HOEHE"
   --brightness "$HELLIGKEIT" --contrast "$KONTRAST" --saturation "$SAETTIGUNG"
   --sharpness "$SCHAERFE" --awb "$WEISSABGLEICH" --denoise "$RAUSCHUNTERDRUECKUNG"
   --quality "$JPEG_QUALITAET" --rotation "$ROTATION"
-  --timeout 1000)
+  --timeout "$AUFNAHME_VERZOEGERUNG_MS")
 
 # Ohne --timeout wartet rpicam-still/libcamera-still standardmaessig 5 Sekunden
 # (Vorschau zum Einschwingen von Belichtung/Weissabgleich), bevor es ueberhaupt
 # ausloest - bei mehreren Fotos hintereinander (Tuer offen) addiert sich das
-# spuerbar. 1000ms ist ein Kompromiss: deutlich schneller, aber noch genug
-# Zeit zum Einschwingen bei wechselndem Licht (Tuer geht auf -> Tageslicht).
+# spuerbar. AUFNAHME_VERZOEGERUNG_MS (Kamera-Einstellungen, Standard 1000) ist
+# ein einstellbarer Kompromiss: niedriger = schneller, aber weniger Zeit zum
+# Einschwingen bei wechselndem Licht (Tuer geht auf -> Tageslicht).
 
 [ "$VERSCHLUSSZEIT" != "0" ] && KAMERA_ARGS+=(--shutter "$VERSCHLUSSZEIT")
 [ "$GAIN" != "0" ] && KAMERA_ARGS+=(--gain "$GAIN")

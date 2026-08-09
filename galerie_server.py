@@ -94,6 +94,9 @@ KAMERA_FELDER = [
     {"key": "fokus_position", "typ": "zahl",
      "label": "Fokus-Entfernung bei 'Fest eingestellt' (höher = näher, 0 = unendlich fern)",
      "min": 0, "max": 10, "step": 0.1},
+    {"key": "aufnahme_verzoegerung_ms", "typ": "zahl",
+     "label": "Aufnahme-Verzögerung in ms (niedriger = schneller, aber Belichtung/Weißabgleich weniger eingeschwungen)",
+     "min": 200, "max": 3000, "step": 100},
     {"key": "breite", "typ": "zahl", "label": "Breite (Pixel)", "min": 320, "max": 4608, "step": 1},
     {"key": "hoehe", "typ": "zahl", "label": "Höhe (Pixel)", "min": 240, "max": 2592, "step": 1},
     {"key": "jpeg_qualitaet", "typ": "zahl", "label": "JPEG-Qualität", "min": 1, "max": 100, "step": 1},
@@ -106,7 +109,8 @@ KAMERA_FELDER = [
 KAMERA_STANDARD = {
     "metering": "centre", "ev": 0, "belichtungsmodus": "sport", "verschlusszeit": 0, "gain": 0,
     "helligkeit": 0, "kontrast": 1, "saettigung": 1, "schaerfe": 1, "weissabgleich": "auto",
-    "rauschunterdrueckung": "cdn_fast", "fokus_modus": "auto", "fokus_position": 4.0,
+    "rauschunterdrueckung": "cdn_fast", "fokus_modus": "fest", "fokus_position": 4.0,
+    "aufnahme_verzoegerung_ms": 1000,
     "breite": 2304, "hoehe": 1296, "jpeg_qualitaet": 90,
     "rotation": "0", "horizontal_spiegeln": False, "vertikal_spiegeln": False, "zoom": 1.0,
 }
@@ -261,6 +265,91 @@ def liste_bilder(verzeichnis):
     return dateien
 
 
+# Bewusst IN ARCHIV_DIR (nicht EINSTELLUNGEN_DIR) abgelegt: das Fotos-Backup
+# im Setup-Portal sichert nur "fotos/" (Bilder+Archiv), nicht "einstellungen/"
+# - eine Notiz wie "Diebstahl, 4€ fehlte" soll aber genau wie das zugehoerige
+# Foto im Backup landen. ARCHIV_DIR ist ausserdem nie eine RAM-Disk (siehe
+# Speicher-Einstellungen weiter unten), geht also auch bei aktivem tmpfs nie
+# beim naechsten Neustart verloren.
+ARCHIV_NOTIZEN_DATEI = os.path.join(ARCHIV_DIR, ".archiv-notizen.json")
+NOTIZ_MAX_LAENGE = 300
+
+
+def lade_archiv_notizen():
+    return _lade_einstellungen_datei(ARCHIV_NOTIZEN_DATEI, {})
+
+
+def speichere_archiv_notiz(dateiname, text):
+    """Legt eine Notiz zu einem Archiv-Foto an oder aendert sie; ein leerer
+    Text loescht die Notiz wieder. Das Datum wird immer automatisch auf
+    "heute" gesetzt (auch beim nachtraeglichen Bearbeiten) - der Nutzer soll
+    ja gerade nachvollziehen koennen, wann der Hinweis eingetragen wurde."""
+    text = (text or "").strip()[:NOTIZ_MAX_LAENGE]
+    notizen = lade_archiv_notizen()
+    if text:
+        notizen[dateiname] = {"text": text, "datum": time.strftime("%Y-%m-%d")}
+    else:
+        notizen.pop(dateiname, None)
+    with open(ARCHIV_NOTIZEN_DATEI, "w") as f:
+        json.dump(notizen, f)
+    return notizen.get(dateiname)
+
+
+def archiv_notiz_entfernen(dateiname):
+    """Aufraeumen, wenn ein Archiv-Foto geloescht wird - sonst bleibt die
+    Notiz verwaist stehen (gleiches Muster wie thumbnail_entfernen)."""
+    notizen = lade_archiv_notizen()
+    if dateiname in notizen:
+        del notizen[dateiname]
+        with open(ARCHIV_NOTIZEN_DATEI, "w") as f:
+            json.dump(notizen, f)
+
+
+THUMB_ORDNER_NAME = ".thumbs"
+THUMB_BREITE_PX = 400
+
+
+def _thumb_pfad(verzeichnis, dateiname):
+    return os.path.join(verzeichnis, THUMB_ORDNER_NAME, dateiname)
+
+
+def thumbnail_erzeugen_falls_noetig(verzeichnis, dateiname):
+    """Erzeugt (falls noch nicht vorhanden oder das Original neuer ist) ein
+    verkleinertes Vorschaubild und gibt dessen Pfad zurueck. Schlaegt das
+    fehl (z.B. Pillow fehlt, Bild kaputt), wird ersatzweise der Pfad des
+    Originals zurueckgegeben - dann ist die Vorschau zwar nicht kleiner,
+    aber die Galerie zeigt trotzdem etwas an, statt einen Fehler zu werfen."""
+    original = os.path.join(verzeichnis, dateiname)
+    thumb = _thumb_pfad(verzeichnis, dateiname)
+    try:
+        if os.path.isfile(thumb) and os.path.getmtime(thumb) >= os.path.getmtime(original):
+            return thumb
+    except OSError:
+        pass
+    try:
+        from PIL import Image
+        os.makedirs(os.path.dirname(thumb), exist_ok=True)
+        with Image.open(original) as bild:
+            bild = bild.convert("RGB")
+            if bild.width > THUMB_BREITE_PX:
+                neue_hoehe = max(1, round(bild.height * THUMB_BREITE_PX / bild.width))
+                bild = bild.resize((THUMB_BREITE_PX, neue_hoehe), Image.LANCZOS)
+            bild.save(thumb, "JPEG", quality=80)
+        return thumb
+    except Exception:
+        return original
+
+
+def thumbnail_entfernen(verzeichnis, dateiname):
+    """Aufräumen, wenn das zugehoerige Originalfoto archiviert oder geloescht
+    wird - sonst sammeln sich verwaiste Thumbnails in .thumbs/ an, die nie
+    wieder gebraucht werden."""
+    try:
+        os.remove(_thumb_pfad(verzeichnis, dateiname))
+    except OSError:
+        pass
+
+
 def _lade_einstellungen_datei(pfad, standard):
     werte = dict(standard)
     if os.path.isfile(pfad):
@@ -320,6 +409,7 @@ def _schreibe_kamera_shell_conf(werte):
         f"RAUSCHUNTERDRUECKUNG={_sh_quote(werte['rauschunterdrueckung'])}",
         f"FOKUS_MODUS={_sh_quote(werte['fokus_modus'])}",
         f"FOKUS_POSITION={_sh_quote(werte['fokus_position'])}",
+        f"AUFNAHME_VERZOEGERUNG_MS={_sh_quote(int(werte['aufnahme_verzoegerung_ms']))}",
         f"BREITE={_sh_quote(int(werte['breite']))}",
         f"HOEHE={_sh_quote(int(werte['hoehe']))}",
         f"JPEG_QUALITAET={_sh_quote(int(werte['jpeg_qualitaet']))}",
@@ -838,6 +928,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_bild(p, BILDER_DIR, "/bilder/")
         if p.startswith("/archiv-bilder/"):
             return self.serve_bild(p, ARCHIV_DIR, "/archiv-bilder/")
+        if p.startswith("/thumbs/"):
+            return self.serve_thumb(p, BILDER_DIR, "/thumbs/")
+        if p.startswith("/archiv-thumbs/"):
+            return self.serve_thumb(p, ARCHIV_DIR, "/archiv-thumbs/")
         self.serve_static(p)
 
     def do_POST(self):
@@ -877,11 +971,30 @@ class Handler(BaseHTTPRequestHandler):
         with open(full, "rb") as f:
             self._bytes(f.read(), ct)
 
+    def serve_thumb(self, path, verzeichnis, prefix):
+        """Wie serve_bild, liefert aber ein verkleinertes/gecachtes Vorschaubild
+        aus - erzeugt es beim ersten Abruf. Laeuft NUR wenn tatsaechlich ein
+        Browser die Galerie oeffnet, hat also keinerlei Einfluss auf foto.sh/
+        die Aufnahme-Geschwindigkeit waehrend die Tuer offen ist."""
+        dateiname = sichere_dateiname(unquote(path[len(prefix):]))
+        if not dateiname:
+            return self._err(400, "Ungueltiger Dateiname")
+        voller_pfad = os.path.join(verzeichnis, dateiname)
+        if not os.path.isfile(voller_pfad):
+            return self._err(404, "Not found")
+        thumb_pfad = thumbnail_erzeugen_falls_noetig(verzeichnis, dateiname)
+        ct = mimetypes.guess_type(thumb_pfad)[0] or "application/octet-stream"
+        with open(thumb_pfad, "rb") as f:
+            self._bytes(f.read(), ct)
+
     def api_get(self, path):
         if path == "/api/photos":
             q = parse_qs(urlparse(self.path).query)
             archiv = (q.get("archiv") or ["0"])[0] == "1"
-            return self._json({"bilder": liste_bilder(ARCHIV_DIR if archiv else BILDER_DIR)})
+            antwort = {"bilder": liste_bilder(ARCHIV_DIR if archiv else BILDER_DIR)}
+            if archiv:
+                antwort["notizen"] = lade_archiv_notizen()
+            return self._json(antwort)
         if path == "/api/simulation":
             return self._json({"dauer_sekunden": lade_simulation_dauer(), "max_sekunden": SIMULATION_DAUER_MAX_SEK})
         if path == "/api/speicher":
@@ -921,6 +1034,7 @@ class Handler(BaseHTTPRequestHandler):
                     # mit "Invalid cross-device link", shutil.move() faellt in
                     # dem Fall automatisch auf Kopieren+Loeschen zurueck.
                     shutil.move(quelle, os.path.join(ARCHIV_DIR, dateiname))
+                    thumbnail_entfernen(BILDER_DIR, dateiname)  # wird beim Ansehen im Archiv neu erzeugt
                     archiviert += 1
             return self._json({"archiviert": archiviert})
 
@@ -936,8 +1050,19 @@ class Handler(BaseHTTPRequestHandler):
                 pfad = os.path.join(verzeichnis, dateiname)
                 if os.path.isfile(pfad):
                     os.remove(pfad)
+                    thumbnail_entfernen(verzeichnis, dateiname)
+                    if archiv:
+                        archiv_notiz_entfernen(dateiname)
                     geloescht += 1
             return self._json({"geloescht": geloescht})
+
+        if path == "/api/archiv/notiz":
+            body = self._rjson()
+            dateiname = sichere_dateiname(body.get("datei", ""))
+            if not dateiname or not os.path.isfile(os.path.join(ARCHIV_DIR, dateiname)):
+                return self._err(404, "Foto nicht im Archiv gefunden")
+            notiz = speichere_archiv_notiz(dateiname, body.get("text", ""))
+            return self._json({"ok": True, "notiz": notiz})
 
         if path == "/api/simulation":
             body = self._rjson()

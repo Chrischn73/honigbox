@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.2.5';
+const APP_VERSION = 'v1.2.6';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -53,6 +53,7 @@ const hauptTabBtns = document.querySelectorAll('.haupt-tab-btn');
 const ansichten = document.querySelectorAll('.ansicht');
 
 let zeigeArchiv = false;
+let archivNotizen = {};
 let ausgewaehlt = new Set();
 let kameraFelder = [];
 let fotoZeitplanFelder = [];
@@ -60,6 +61,10 @@ let pushoverMeldungenSchema = [];
 
 function bildUrl(datei) {
   return (zeigeArchiv ? '/archiv-bilder/' : '/bilder/') + encodeURIComponent(datei);
+}
+
+function thumbUrl(datei) {
+  return (zeigeArchiv ? '/archiv-thumbs/' : '/thumbs/') + encodeURIComponent(datei);
 }
 
 function toast(text) {
@@ -111,6 +116,77 @@ function bestaetigen(text) {
     okBtn.addEventListener('click', () => schliessen(true));
     back.addEventListener('click', (e) => { if (e.target === back) schliessen(false); });
   });
+}
+
+function notizEingeben(titel, startwert) {
+  // Wie bestaetigen() oben, aber mit einem Textfeld statt nur Ja/Nein -
+  // fuer die Archiv-Notizen ("Diebstahl, 4€ fehlte" o.ae.).
+  return new Promise((resolve) => {
+    const back = document.createElement('div');
+    back.className = 'confirm-back';
+
+    const box = document.createElement('div');
+    box.className = 'confirm-box';
+
+    const p = document.createElement('p');
+    p.textContent = titel;
+
+    const feld = document.createElement('textarea');
+    feld.className = 'notiz-textfeld';
+    feld.value = startwert || '';
+    feld.maxLength = 300;
+    feld.rows = 3;
+
+    const aktionen = document.createElement('div');
+    aktionen.className = 'confirm-aktionen';
+
+    const abbrechenBtn = document.createElement('button');
+    abbrechenBtn.className = 'btn btn-ghost';
+    abbrechenBtn.textContent = 'Abbrechen';
+
+    const speichernBtn = document.createElement('button');
+    speichernBtn.className = 'btn btn-primary';
+    speichernBtn.textContent = 'Speichern';
+
+    aktionen.append(abbrechenBtn, speichernBtn);
+    box.append(p, feld, aktionen);
+    back.appendChild(box);
+    document.body.appendChild(back);
+    feld.focus();
+
+    const schliessen = (ergebnis) => {
+      back.remove();
+      resolve(ergebnis);
+    };
+    abbrechenBtn.addEventListener('click', () => schliessen(null));
+    speichernBtn.addEventListener('click', () => schliessen(feld.value));
+    back.addEventListener('click', (e) => { if (e.target === back) schliessen(null); });
+  });
+}
+
+async function notizSpeichern(datei, text) {
+  try {
+    const res = await fetch('/api/archiv/notiz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ datei, text }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast(data.error || 'Notiz konnte nicht gespeichert werden');
+      return;
+    }
+    toast(text.trim() ? 'Notiz gespeichert' : 'Notiz gelöscht');
+    laden();
+  } catch {
+    toast('Notiz konnte nicht gespeichert werden');
+  }
+}
+
+async function notizBearbeiten(datei, bisherigerText) {
+  const text = await notizEingeben(`Notiz zu ${datei}`, bisherigerText);
+  if (text === null) return; // Abbrechen
+  await notizSpeichern(datei, text);
 }
 
 function setzeStatusBadge(el, klasse, text) {
@@ -215,6 +291,7 @@ async function laden() {
   try {
     const res = await fetch(`/api/photos?archiv=${zeigeArchiv ? 1 : 0}`);
     const data = await res.json();
+    archivNotizen = data.notizen || {};
     render(data.bilder || []);
   } catch {
     toast('Fotos konnten nicht geladen werden');
@@ -737,6 +814,7 @@ function render(bilder) {
 
   bilder.forEach((datei) => {
     const url = bildUrl(datei);
+    const vorschauUrl = thumbUrl(datei);
     const li = document.createElement('li');
     li.className = 'card';
 
@@ -761,7 +839,7 @@ function render(bilder) {
 
     const img = document.createElement('img');
     img.className = 'thumb';
-    img.src = url;
+    img.src = vorschauUrl;
     img.alt = datei;
     img.loading = 'lazy';
     img.addEventListener('click', () => oeffneLightbox(url, datei));
@@ -774,6 +852,24 @@ function render(bilder) {
     sub.className = 'card-sub';
     sub.textContent = datei;
     main.appendChild(sub);
+
+    if (zeigeArchiv) {
+      const notiz = archivNotizen[datei];
+      const notizWrap = document.createElement('div');
+      notizWrap.className = 'card-notiz';
+      if (notiz) {
+        const notizText = document.createElement('div');
+        notizText.className = 'card-notiz-text';
+        notizText.textContent = `📝 ${notiz.text} (${notiz.datum})`;
+        notizWrap.appendChild(notizText);
+      }
+      const notizBtn = document.createElement('button');
+      notizBtn.className = 'btn btn-sm btn-ghost card-notiz-btn';
+      notizBtn.textContent = notiz ? 'Notiz bearbeiten' : '📝 Notiz hinzufügen';
+      notizBtn.addEventListener('click', () => notizBearbeiten(datei, notiz ? notiz.text : ''));
+      notizWrap.appendChild(notizBtn);
+      main.appendChild(notizWrap);
+    }
 
     li.append(thumbWrap, main);
     liste.appendChild(li);
@@ -854,6 +950,61 @@ grid.addEventListener('click', (e) => {
   e.preventDefault();
 }, true);
 
+// Mehrfachauswahl per Wischen auf dem Handy: startet nur, wenn der Finger
+// auf einer Checkbox aufsetzt (klare Absicht, kein zufaelliges Scrollen wird
+// dadurch blockiert) - beim Ziehen ueber WEITERE Karten (nicht nur deren
+// winzige Checkbox-Ecke, sondern die ganze Kachel) werden diese mit
+// ausgewaehlt. Komplett unabhaengig von der Maus-Rahmen-Auswahl oben.
+let touchAuswahlAktiv = false;
+let touchAuswahlStartKarte = null;
+let touchAuswahlLetzteKarte = null;
+let touchAuswahlBewegt = false;
+
+function touchKarteMarkieren(karte) {
+  const checkbox = karte && karte.querySelector('.bild-checkbox');
+  if (checkbox && !checkbox.checked) {
+    checkbox.checked = true;
+    ausgewaehlt.add(checkbox.dataset.datei);
+    aktualisiereAuswahlLeiste();
+  }
+}
+
+grid.addEventListener('touchstart', (e) => {
+  const zone = e.target.closest('.checkbox-tap-zone');
+  if (!zone) return;
+  touchAuswahlAktiv = true;
+  touchAuswahlBewegt = false;
+  touchAuswahlStartKarte = zone.closest('.card');
+  touchAuswahlLetzteKarte = touchAuswahlStartKarte;
+  // Absichtlich HIER noch nicht die Checkbox selbst setzen: ein einfacher Tap
+  // (touchstart+touchend ohne Bewegung) toggelt die Checkbox schon ganz normal
+  // per nativem Klick - wuerde man hier zusaetzlich markieren, wuerde der
+  // gleich folgende native Klick sie sofort wieder abwaehlen (toggelt ja).
+}, { passive: true });
+
+grid.addEventListener('touchmove', (e) => {
+  if (!touchAuswahlAktiv) return;
+  const touch = e.touches[0];
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  const karte = el && el.closest('.card');
+  // Bei Stillstand/Zittern auf derselben Karte KEIN preventDefault - sonst
+  // koennte das den nativen Klick eines einfachen Taps unterdruecken.
+  if (!karte || karte === touchAuswahlLetzteKarte) return;
+  e.preventDefault(); // ab hier ein echter Auswahl-Zug, nicht mehr Scrollen
+  if (!touchAuswahlBewegt) {
+    touchAuswahlBewegt = true;
+    touchKarteMarkieren(touchAuswahlStartKarte); // Start-Karte war noch nicht dabei
+  }
+  touchAuswahlLetzteKarte = karte;
+  touchKarteMarkieren(karte);
+}, { passive: false });
+
+grid.addEventListener('touchend', () => {
+  touchAuswahlAktiv = false;
+  touchAuswahlStartKarte = null;
+  touchAuswahlLetzteKarte = null;
+});
+
 tabFotos.addEventListener('click', () => { zeigeArchiv = false; laden(); });
 tabArchiv.addEventListener('click', () => { zeigeArchiv = true; laden(); });
 
@@ -894,12 +1045,14 @@ speicherOrtSel.addEventListener('change', aktualisiereSpeicherFeldSichtbarkeit);
 speicherUebernehmenBtn.addEventListener('click', speicherUebernehmen);
 hauptTabBtns.forEach((btn) => btn.addEventListener('click', () => zeigeAnsicht(btn.dataset.ansicht)));
 
-// Setup-Seite (WLAN-Einrichtung) laeuft als eigener Dienst auf Port 80, nicht
-// auf dem Galerie-Port dieser Seite - deshalb Host ohne Port neu zusammensetzen
-// statt einfach die aktuelle URL zu nehmen. Trifft den Normalfall (Port 80 frei
-// beim Einrichten); laeuft die Setup-Seite ausnahmsweise auf einem Ausweich-Port,
-// muesste die Adresse von Hand aufgerufen werden.
-linkSetupSeiteEl.href = `${location.protocol}//${location.hostname}/wifi`;
+// Setup-Portal (WLAN/Update/Backup) laeuft als eigener Dienst auf Port 80,
+// nicht auf dem Galerie-Port dieser Seite - deshalb Host ohne Port neu
+// zusammensetzen statt einfach die aktuelle URL zu nehmen. Trifft den
+// Normalfall (Port 80 frei beim Einrichten); laeuft die Setup-Seite
+// ausnahmsweise auf einem Ausweich-Port, muesste die Adresse von Hand
+// aufgerufen werden. Zeigt bewusst auf die Portal-Startseite (nicht /wifi
+// direkt) - von dort aus geht's zu WLAN, Update UND Backup.
+linkSetupSeiteEl.href = `${location.protocol}//${location.hostname}/`;
 
 // Akkordeon: von den Einstellungen-Abschnitten soll immer nur einer
 // aufgeklappt sein - macht die lange Liste uebersichtlicher.

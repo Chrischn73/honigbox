@@ -1,6 +1,9 @@
 #!/bin/bash
-# Gemeinsamer Pushover-Versand. Aufruf: send_pushover.sh <meldung-id>
-# z.B. send_pushover.sh geoeffnet
+# Gemeinsamer Pushover-Versand. Aufruf: send_pushover.sh <meldung-id> [foto-pfad]
+# z.B. send_pushover.sh geoeffnet /opt/honigbox/fotos/Bilder/20260809_120000.jpg
+# Der Foto-Pfad ist optional - wird er angegeben und existiert die Datei,
+# wird sie als Bildanhang mitgeschickt (aktuell nur von "geoeffnet" genutzt,
+# siehe honigbox.sh).
 #
 # Token/User sowie ob eine Meldung aktiv ist und ihr Text stehen in der von
 # der Galerie-Weboberflaeche gespeicherten .pushover-einstellungen.sh (siehe
@@ -38,6 +41,7 @@ except Exception:
 fi
 
 MELDUNG_ID="$1"
+FOTO_PFAD="$2"
 ENABLED_VAR="ENABLED_${MELDUNG_ID}"
 TEXT_VAR="TEXT_${MELDUNG_ID}"
 
@@ -60,8 +64,11 @@ fi
 
 # --retry: falls Netzwerk/DNS kurz nach dem Booten noch nicht bereit ist,
 # nicht sofort aufgeben, sondern bis zu 5x mit steigender Pause erneut versuchen
-curl -s --retry 5 --retry-delay 3 --retry-all-errors \
-  --form-string "token=$PUSHOVER_TOKEN" \
-  --form-string "user=$PUSHOVER_USER" \
-  --form-string "message=$TEXT" \
-  https://api.pushover.net/1/messages.json
+CURL_ARGS=(-s --retry 5 --retry-delay 3 --retry-all-errors
+  --form-string "token=$PUSHOVER_TOKEN"
+  --form-string "user=$PUSHOVER_USER"
+  --form-string "message=$TEXT")
+if [ -n "$FOTO_PFAD" ] && [ -f "$FOTO_PFAD" ]; then
+  CURL_ARGS+=(-F "attachment=@${FOTO_PFAD};type=image/jpeg")
+fi
+curl "${CURL_ARGS[@]}" https://api.pushover.net/1/messages.json

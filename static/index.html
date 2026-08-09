@@ -17,6 +17,7 @@
         by <img src="./imkerei-logo.jpeg" alt="Imkerei Frerichs" class="topbar-logo">
       </div>
     </div>
+    <a class="topbar-setup-btn" id="link-setup-seite" href="#" target="_blank" rel="noopener">⚙️ Setup / Update / Backup</a>
   </header>
 
   <div class="status-leiste">
@@ -134,6 +135,11 @@
       <details class="kamera-details">
         <summary>❓ Hilfe</summary>
 
+        <p>BeeTown HonigBox überwacht die Tür einer Bienenbox: Ein Kontaktschalter erkennt, wenn sie
+        geöffnet wird, eine Kamera macht dabei Fotos, und per Pushover kommt eine Benachrichtigung
+        aufs Handy. Diese Seite erklärt die drei Dinge, die dafür einmalig eingerichtet werden
+        müssen: Kamera, Türschalter und Pushover.</p>
+
         <h3 class="hilfe-titel">📷 Welche Kamera, und wie anschließen?</h3>
         <p>Benötigt wird das offizielle <strong>Raspberry Pi Camera Module 3</strong> (die
         Standard-Version reicht völlig, das teurere Weitwinkel-/NoIR-Modell ist nicht nötig).
@@ -159,6 +165,7 @@
         aktiviert ist, und den Sitz des Kabels an beiden Enden (Kamera-Platine und Pi) nochmal
         kontrollieren.</p>
 
+        <hr class="hilfe-trenner">
         <h3 class="hilfe-titel">🚪 Türkontaktschalter anschließen</h3>
         <p>Benötigt wird ein einfacher <strong>Öffner- oder Schließer-Kontakt</strong> (z. B. ein
         Magnet-Reedkontakt wie bei Fenster-/Tür-Alarmanlagen, oder ein simpler Mikroschalter) –
@@ -178,13 +185,41 @@
         Türöffnungs-Logik auch ganz ohne Schalter durchspielen. Reagiert die Anzeige „🚪 Tür“ auf
         der Startseite nicht auf den echten Schalter, zuerst die Verkabelung (fester Sitz an
         beiden Pins) und dann ggf. die Kontaktrichtung (Öffner/Schließer vertauscht) prüfen.</p>
+
+        <hr class="hilfe-trenner">
+        <h3 class="hilfe-titel">🔔 Pushover einrichten</h3>
+        <p>Pushover schickt die Benachrichtigungen (Tür auf/zu usw.) als Push-Nachricht ans Handy –
+        kostet einmalig eine Kleingebühr pro Betriebssystem (Android/iOS), keine Abo-Kosten.</p>
+        <ol style="margin:.3rem 0 .8rem; padding-left:1.2rem; font-size:.9rem">
+          <li>Account anlegen: <a href="https://pushover.net/signup" target="_blank" rel="noopener">pushover.net/signup</a>
+          (falls schon vorhanden: <a href="https://pushover.net/login" target="_blank" rel="noopener">pushover.net/login</a>)</li>
+          <li>Die Pushover-App auf dem Handy installieren (App Store/Play Store) und dort mit
+          demselben Account anmelden – danach zeigt die Pushover-Webseite oben den persönlichen
+          <strong>User Key</strong> an</li>
+          <li>Eine eigene "Anwendung" für HonigBox anlegen unter
+          <a href="https://pushover.net/apps/build" target="_blank" rel="noopener">pushover.net/apps/build</a>
+          (Name z. B. "HonigBox" reicht, restliche Felder können leer bleiben) – danach wird der
+          <strong>API Token/Key</strong> dieser Anwendung angezeigt</li>
+          <li>Beide Schlüssel (User Key + API Token) unter „🔔 Pushover-Einstellungen“ in HonigBox
+          eintragen und speichern, danach über „📨 Test senden“ prüfen</li>
+        </ol>
+
+        <hr class="hilfe-trenner">
+        <h3 class="hilfe-titel">🌐 Erreichbarkeit verbessern (falls "honigbox.local" mal nicht geht)</h3>
+        <p>Der Name <code>honigbox.local</code> funktioniert über eine Technik namens mDNS – die ist
+        praktisch, aber je nach Router/WLAN (z. B. Mesh-Systeme, manche Gast-Netze) gelegentlich nicht
+        ganz zuverlässig. Das liegt nicht an HonigBox selbst, sondern an dieser Technik allgemein.</p>
+        <p class="muted" style="font-size:.85rem">Robuster: dem Pi im Router eine <strong>feste
+        IP-Adresse reservieren</strong> (meist unter „DHCP“ oder „Netzwerkgeräte“ in der
+        Router-Oberfläche, anhand der MAC-Adresse des Pi) und diese feste IP direkt verwenden/als
+        Lesezeichen speichern, statt auf <code>.local</code> zu setzen. Der Name bleibt trotzdem
+        nutzbar, ist dann aber nur noch ein bequemer Zusatz, kein Muss.</p>
       </details>
 
       <details class="kamera-details system-details">
         <summary>⚡ System</summary>
         <p class="warnhinweis" id="ram-neustart-warnung" hidden>⚠️ Fotos liegen aktuell im RAM-Speicher (Einstellung unter „📷 Fotos“ → „Speicherort“) – bei Neustart/Herunterfahren gehen alle noch nicht archivierten Fotos dabei verloren.</p>
         <div class="kamera-aktionen">
-          <a class="btn btn-sm btn-ghost" id="link-setup-seite" href="#" target="_blank" rel="noopener">📶 Setup-Seite (WLAN) öffnen</a>
           <button class="btn btn-sm btn-ghost" id="btn-dienste-neustart">🔁 Dienste neu starten</button>
           <button class="btn btn-sm btn-danger" id="btn-neustart">🔄 Pi neu starten</button>
           <button class="btn btn-sm btn-danger" id="btn-herunterfahren">⏻ Pi herunterfahren</button>
@@ -194,7 +229,7 @@
       <hr class="spenden-trenner">
       <div class="spenden-box">
         <p>BeeTown HonigBox ist kostenlos, werbefrei und ganz ohne Tracking. Wenn dir die App im Imker-Alltag hilft, freue ich mich über eine kleine Spende für Kaffee &amp; Weiterentwicklung. 🐝☕</p>
-        <a class="btn btn-ghost" href="https://www.paypal.com/donate/?hosted_button_id=F7WE7N68TBAKE" target="_blank" rel="noopener">☕ BeeTown HonigBox unterstützen</a>
+        <a class="btn btn-ghost" href="https://www.paypal.com/donate/?hosted_button_id=F7WE7N68TBAKE&locale.x=de_DE&amount=10" target="_blank" rel="noopener">☕ BeeTown HonigBox unterstützen</a>
       </div>
       <div class="spenden-box">
         <p>Idee, Wunsch oder einen Fehler gefunden? Ich freue mich über Feedback.</p>
