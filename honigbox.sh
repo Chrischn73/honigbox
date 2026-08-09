@@ -43,7 +43,7 @@ door_switch = Button(SWITCH_PIN, pull_up=True, bounce_time=0.2)
 WAIT_CONFIRM = 1        # Sek. bis Bestaetigungsmessung nach erster Erkennung
 CONFIRM_ROUNDS = 2       # Anzahl Bestaetigungen, um Prellen auszuschliessen
 CONFIRM_DELAY = 2        # Sek. zwischen Bestaetigungen
-WAIT_ESCALATE_1 = 200    # Sek. offen bis push2.sh (Eskalationsstufe 1)
+WAIT_ESCALATE_1 = 240    # Sek. offen bis push2.sh (Eskalationsstufe 1)
 WAIT_ESCALATE_2 = 1800   # weitere Sek. offen bis push3.sh (Eskalationsstufe 2)
 LOOP_DELAY = 1           # Sek. zwischen Durchlaeufen der Hauptschleife
 LOOP_TICK = 1            # Sek. zwischen Pruefungen waehrend die Tuer offen ist
@@ -59,14 +59,15 @@ TUER_SIMULATION_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-simulation-bis.jso
 TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-signal")
 
 
-def schreibe_status(offen):
+def schreibe_status(offen, offen_seit):
     """Fuer die Status-Anzeige in der Galerie-Weboberflaeche (siehe /api/status
     in galerie_server.py) - die Galerie liest hier nur, greift nicht selbst
-    per GPIO auf den Schalter zu."""
+    per GPIO auf den Schalter zu. offen_seit ist der Unix-Zeitstempel, seit dem
+    die Tuer ununterbrochen offen ist (None wenn sie gerade zu ist) - damit
+    kann die Weboberflaeche anzeigen, wie lange die Tuer schon offen steht."""
     try:
-        os.makedirs(BILDER_DIR, exist_ok=True)
         with open(STATUS_PATH, "w") as f:
-            json.dump({"tuer_offen": offen, "aktualisiert": time.time()}, f)
+            json.dump({"tuer_offen": offen, "aktualisiert": time.time(), "offen_seit": offen_seit}, f)
     except OSError:
         pass
 
@@ -91,9 +92,18 @@ def simulation_aktiv():
     return True
 
 
+_tuer_offen_seit = None  # Unix-Zeitstempel, seit dem die Tuer ununterbrochen offen ist (None = zu)
+
+
 def door_is_open():
+    global _tuer_offen_seit
     offen = simulation_aktiv() or door_switch.is_pressed
-    schreibe_status(offen)
+    if offen:
+        if _tuer_offen_seit is None:
+            _tuer_offen_seit = time.time()
+    else:
+        _tuer_offen_seit = None
+    schreibe_status(offen, _tuer_offen_seit)
     return offen
 
 

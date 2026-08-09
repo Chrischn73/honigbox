@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.2.4';
+const APP_VERSION = 'v1.2.5';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -46,6 +46,8 @@ const pushoverTestBtn = document.getElementById('pushover-test');
 const statusRaspiEl = document.getElementById('status-raspi');
 const statusDienstEl = document.getElementById('status-dienst');
 const statusTuerEl = document.getElementById('status-tuer');
+const kameraFehltWarnungEl = document.getElementById('kamera-fehlt-warnung');
+const btnPushoverStumm = document.getElementById('btn-pushover-stumm');
 const STATUS_VERALTET_NACH_SEK = 15;
 const hauptTabBtns = document.querySelectorAll('.haupt-tab-btn');
 const ansichten = document.querySelectorAll('.ansicht');
@@ -135,10 +137,28 @@ function aktualisiereStatusAnzeige(daten) {
   if (daten.tuer_offen === null) {
     setzeStatusBadge(statusTuerEl, 'status-fehler', '🚪 Tür: unbekannt');
   } else if (daten.tuer_offen) {
-    setzeStatusBadge(statusTuerEl, 'status-warn', '🚪 Tür: OFFEN');
+    setzeStatusBadge(statusTuerEl, 'status-warn', `🚪 Tür: OFFEN${formatiereDauerSeit(daten.tuer_offen_dauer_sekunden)}`);
   } else {
     setzeStatusBadge(statusTuerEl, 'status-ok', '🚪 Tür: zu');
   }
+
+  kameraFehltWarnungEl.hidden = daten.kamera_erkannt !== false;
+
+  const stummRest = daten.pushover_stumm_rest_sekunden || 0;
+  if (stummRest > 0) {
+    btnPushoverStumm.dataset.aktiv = '1';
+    btnPushoverStumm.textContent = `🔔 Stummschaltung aufheben (noch ${Math.ceil(stummRest / 60)} Min.)`;
+  } else {
+    btnPushoverStumm.dataset.aktiv = '0';
+    btnPushoverStumm.textContent = '🔕 Pushover 30 Min. stummschalten';
+  }
+}
+
+function formatiereDauerSeit(sekunden) {
+  if (sekunden == null) return '';
+  if (sekunden < 60) return ` (seit ${Math.floor(sekunden)} Sek.)`;
+  const minuten = Math.floor(sekunden / 60);
+  return ` (seit ${minuten} Min.)`;
 }
 
 async function ladeStatus() {
@@ -152,6 +172,7 @@ async function ladeStatus() {
     setzeStatusBadge(statusRaspiEl, 'status-fehler', '🔴 Raspi nicht erreichbar');
     setzeStatusBadge(statusDienstEl, 'status-fehler', '🔴 Status nicht abrufbar');
     setzeStatusBadge(statusTuerEl, 'status-fehler', '🚪 Tür: unbekannt');
+    kameraFehltWarnungEl.hidden = true;
   }
 }
 
@@ -655,6 +676,29 @@ async function tuerSimulieren() {
   }
 }
 
+async function pushoverStummSchalten() {
+  const aktuellAktiv = btnPushoverStumm.dataset.aktiv === '1';
+  if (!aktuellAktiv && !await bestaetigen('Pushover-Benachrichtigungen für 30 Minuten stummschalten?')) return;
+  btnPushoverStumm.disabled = true;
+  try {
+    const res = await fetch('/api/pushover/stumm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aktiv: !aktuellAktiv }),
+    });
+    if (res.ok) {
+      toast(aktuellAktiv ? 'Stummschaltung aufgehoben' : 'Pushover für 30 Minuten stummgeschaltet');
+      ladeStatus();
+    } else {
+      toast('Fehler beim Umschalten');
+    }
+  } catch {
+    toast('Fehler beim Umschalten');
+  } finally {
+    btnPushoverStumm.disabled = false;
+  }
+}
+
 async function batchArchivieren() {
   if (ausgewaehlt.size === 0) return;
   if (!await bestaetigen(`${ausgewaehlt.size} Foto(s) in Archiv verschieben?`)) return;
@@ -838,6 +882,7 @@ btnNeustart.addEventListener('click', neustart);
 btnHerunterfahren.addEventListener('click', herunterfahren);
 btnDiensteNeustart.addEventListener('click', diensteNeustart);
 btnTuerSimulieren.addEventListener('click', tuerSimulieren);
+btnPushoverStumm.addEventListener('click', pushoverStummSchalten);
 fotoZeitplanSpeichernBtn.addEventListener('click', speichereFotoZeitplan);
 fotoZeitplanZuruecksetzenBtn.addEventListener('click', fotoZeitplanZuruecksetzen);
 pushoverSpeichernBtn.addEventListener('click', speicherePushoverEinstellungen);

@@ -104,7 +104,7 @@ KAMERA_FELDER = [
 ]
 
 KAMERA_STANDARD = {
-    "metering": "spot", "ev": 0, "belichtungsmodus": "normal", "verschlusszeit": 0, "gain": 0,
+    "metering": "centre", "ev": 0, "belichtungsmodus": "sport", "verschlusszeit": 0, "gain": 0,
     "helligkeit": 0, "kontrast": 1, "saettigung": 1, "schaerfe": 1, "weissabgleich": "auto",
     "rauschunterdrueckung": "cdn_fast", "fokus_modus": "auto", "fokus_position": 4.0,
     "breite": 2304, "hoehe": 1296, "jpeg_qualitaet": 90,
@@ -207,6 +207,9 @@ SIMULATION_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".simulation-ein
 SIMULATION_DAUER_STANDARD_SEK = 120
 SIMULATION_DAUER_MAX_SEK = 1800
 
+PUSHOVER_STUMM_PATH = os.path.join(EINSTELLUNGEN_DIR, ".pushover-stumm-bis.json")
+PUSHOVER_STUMM_DAUER_SEK = 1800
+
 # Privilegiertes Script fuer den RAM/Platte-Wechsel (siehe speicher_status()/
 # speichere_speicher_einstellungen() weiter unten) - laeuft als root ueber
 # eine gezielte sudoers-Freigabe, siehe install.sh.
@@ -219,8 +222,8 @@ DURCHSCHNITT_FOTO_BYTES_STANDARD = 300 * 1024  # Schaetzwert, falls noch keine F
 PUSHOVER_MELDUNGEN_SCHEMA = [
     {"id": "boot", "label": "Pi wurde neu gestartet"},
     {"id": "geoeffnet", "label": "Tür wurde geöffnet"},
-    {"id": "eskalation1", "label": "Tür seit ca. 3 Minuten offen"},
-    {"id": "eskalation2", "label": "Tür seit ca. 33 Minuten offen"},
+    {"id": "eskalation1", "label": "Tür seit ca. 4 Minuten offen"},
+    {"id": "eskalation2", "label": "Tür seit ca. 34 Minuten offen"},
     {"id": "geschlossen", "label": "Tür wurde wieder geschlossen"},
 ]
 PUSHOVER_STANDARD = {
@@ -229,8 +232,8 @@ PUSHOVER_STANDARD = {
         "boot": {"aktiv": True, "text": "Raspi wurde gestartet!"},
         "geoeffnet": {"aktiv": True, "text": "HONIGBOX wurde geöffnet!"},
         "eskalation1": {"aktiv": True, "text":
-            "HONIGBOX Tür steht seit ca. 3 Minuten offen! Warte weitere 30 Min bis zur nächsten Prüfung..."},
-        "eskalation2": {"aktiv": True, "text": "HONIGBOX Tür steht seit ca. 33 Minuten offen!"},
+            "HONIGBOX Tür steht seit ca. 4 Minuten offen! Warte weitere 30 Min bis zur nächsten Prüfung..."},
+        "eskalation2": {"aktiv": True, "text": "HONIGBOX Tür steht seit ca. 34 Minuten offen!"},
         "geschlossen": {"aktiv": True, "text": "HonigBox wurde geschlossen!!"},
     },
 }
@@ -490,6 +493,31 @@ def sende_pushover_test(token, user):
         return False, str(e)
 
 
+def pushover_stumm_rest_sekunden():
+    """0, wenn gerade nicht stummgeschaltet ist - sonst verbleibende Sekunden.
+    send_pushover.sh prueft dieselbe Datei eigenstaendig (Bash+python3 -c),
+    da honigbox.sh (nicht diese Galerie) die eigentlichen Meldungen verschickt."""
+    if not os.path.isfile(PUSHOVER_STUMM_PATH):
+        return 0
+    try:
+        with open(PUSHOVER_STUMM_PATH) as f:
+            bis = json.load(f).get("bis", 0)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return 0
+    return max(0, round(bis - time.time()))
+
+
+def setze_pushover_stumm(aktiv):
+    if aktiv:
+        with open(PUSHOVER_STUMM_PATH, "w") as f:
+            json.dump({"bis": time.time() + PUSHOVER_STUMM_DAUER_SEK}, f)
+    else:
+        try:
+            os.remove(PUSHOVER_STUMM_PATH)
+        except OSError:
+            pass
+
+
 def _system_aktion(cmd):
     """Fuehrt reboot/poweroff synchron aus (beide kehren sofort zurueck, sie
     stossen den Vorgang nur an) und meldet den tatsaechlichen Erfolg zurueck -
@@ -642,13 +670,15 @@ def lade_tuer_status():
         try:
             with open(STATUS_PATH) as f:
                 daten = json.load(f)
+            offen_seit = daten.get("offen_seit")
             return {
                 "tuer_offen": daten.get("tuer_offen"),
                 "alter_sekunden": round(time.time() - daten.get("aktualisiert", 0), 1),
+                "offen_dauer_sekunden": round(time.time() - offen_seit) if offen_seit else None,
             }
         except (json.JSONDecodeError, OSError, TypeError):
             pass
-    return {"tuer_offen": None, "alter_sekunden": None}
+    return {"tuer_offen": None, "alter_sekunden": None, "offen_dauer_sekunden": None}
 
 
 def aufraeum_schleife():
@@ -716,6 +746,38 @@ def speicher_wache_schleife():
     while True:
         _wenig_speicher_aufraeumen()
         time.sleep(SPEICHER_WACHE_INTERVALL_SEK)
+
+
+KAMERA_CHECK_INTERVALL_SEK = 60
+_kamera_erkannt_cache = True  # optimistisch, bis der erste Check durchgelaufen ist
+
+
+def kamera_erkannt():
+    """Prueft per --list-cameras, ob rpicam-still/libcamera-still ueberhaupt
+    eine angeschlossene Kamera findet - unabhaengig davon, ob gerade ein Foto
+    aufgenommen wird. Wird in einem eigenen Hintergrund-Thread aufgerufen
+    (kamera_wache_schleife), NICHT direkt bei jeder Statusabfrage - der Aufruf
+    dauert spuerbar (Sensor-Initialisierung), das soll die Weboberflaeche
+    nicht bei jedem Laden verzoegern."""
+    for befehl in ("rpicam-still", "libcamera-still"):
+        if shutil.which(befehl) is None:
+            continue
+        try:
+            ergebnis = subprocess.run([befehl, "--list-cameras"], capture_output=True, text=True, timeout=10)
+        except (subprocess.TimeoutExpired, OSError):
+            return False
+        ausgabe = (ergebnis.stdout or "") + (ergebnis.stderr or "")
+        if "no cameras available" in ausgabe.lower():
+            return False
+        return bool(re.search(r"^\s*\d+\s*:", ausgabe, re.MULTILINE))
+    return False  # weder rpicam-still noch libcamera-still installiert
+
+
+def kamera_wache_schleife():
+    global _kamera_erkannt_cache
+    while True:
+        _kamera_erkannt_cache = kamera_erkannt()
+        time.sleep(KAMERA_CHECK_INTERVALL_SEK)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -837,6 +899,9 @@ class Handler(BaseHTTPRequestHandler):
                 "honigbox_service": status_dienst("honigbox.service"),
                 "tuer_offen": tuer["tuer_offen"],
                 "tuer_alter_sekunden": tuer["alter_sekunden"],
+                "tuer_offen_dauer_sekunden": tuer["offen_dauer_sekunden"],
+                "kamera_erkannt": _kamera_erkannt_cache,
+                "pushover_stumm_rest_sekunden": pushover_stumm_rest_sekunden(),
             })
         self._err(404, "Not found")
 
@@ -850,7 +915,12 @@ class Handler(BaseHTTPRequestHandler):
                     continue
                 quelle = os.path.join(BILDER_DIR, dateiname)
                 if os.path.isfile(quelle):
-                    os.rename(quelle, os.path.join(ARCHIV_DIR, dateiname))
+                    # shutil.move() statt os.rename(): BILDER_DIR kann bei
+                    # aktivierter RAM-Disk ein anderes Dateisystem sein als
+                    # ARCHIV_DIR (immer SD-Karte) - os.rename() scheitert dann
+                    # mit "Invalid cross-device link", shutil.move() faellt in
+                    # dem Fall automatisch auf Kopieren+Loeschen zurueck.
+                    shutil.move(quelle, os.path.join(ARCHIV_DIR, dateiname))
                     archiviert += 1
             return self._json({"archiviert": archiviert})
 
@@ -924,6 +994,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(500, f"Test fehlgeschlagen: {fehler}")
             return self._json({"ok": True})
 
+        if path == "/api/pushover/stumm":
+            body = self._rjson()
+            setze_pushover_stumm(bool(body.get("aktiv")))
+            return self._json({"ok": True, "rest_sekunden": pushover_stumm_rest_sekunden()})
+
         if path == "/api/system/neustart":
             ok, fehler = _system_aktion(["sudo", "-n", "/usr/bin/systemctl", "reboot"])
             if not ok:
@@ -985,6 +1060,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     threading.Thread(target=aufraeum_schleife, daemon=True).start()
     threading.Thread(target=speicher_wache_schleife, daemon=True).start()
+    threading.Thread(target=kamera_wache_schleife, daemon=True).start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"HonigBox-Galerie läuft auf http://{HOST}:{PORT}  (Bilder: {BILDER_DIR})")
     try:

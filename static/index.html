@@ -24,6 +24,9 @@
     <span id="status-dienst" class="status-badge">⏳ Lade Status…</span>
     <span id="status-tuer" class="status-badge">⏳ Lade Status…</span>
   </div>
+  <p class="warnhinweis" id="kamera-fehlt-warnung" hidden>⚠️ Keine Kamera erkannt – bitte Anschluss prüfen (siehe „❓ Hilfe“ in den Einstellungen).</p>
+
+  <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm" style="margin:0 1rem .8rem">🔕 Pushover 30 Min. stummschalten</button>
 
   <nav class="haupt-tabs">
     <button class="haupt-tab-btn" id="haupt-tab-fotos" data-ansicht="fotos">📷 Aufnahmen</button>
@@ -126,6 +129,55 @@
         <div class="kamera-aktionen">
           <button class="btn btn-sm btn-ghost" id="btn-tuer-simulieren">🚪 Türöffnung simulieren</button>
         </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>❓ Hilfe</summary>
+
+        <h3 class="hilfe-titel">📷 Welche Kamera, und wie anschließen?</h3>
+        <p>Benötigt wird das offizielle <strong>Raspberry Pi Camera Module 3</strong> (die
+        Standard-Version reicht völlig, das teurere Weitwinkel-/NoIR-Modell ist nicht nötig).
+        Erhältlich im Raspberry-Pi-Fachhandel oder bei den üblichen Elektronik-Versendern.
+        Für einen Raspberry Pi Zero wird zusätzlich ein passendes <strong>CSI-Adapterkabel</strong>
+        benötigt (steht meist getrennt dazu, da Zero-Modelle einen schmaleren Anschluss haben).</p>
+        <p class="muted" style="font-size:.85rem">Anschließen (Pi vorher ausschalten und vom Strom trennen!):</p>
+        <ol style="margin:.3rem 0 .8rem; padding-left:1.2rem; font-size:.9rem">
+          <li>Den CSI-Kamera-Anschluss am Pi suchen (schmaler Steckplatz mit kleiner
+          Kunststoff-Klemme, meist zwischen HDMI- und USB-Anschlüssen)</li>
+          <li>Die Klemme vorsichtig hochziehen/aufklappen (nicht abziehen, sie bleibt am Sockel)</li>
+          <li>Das Flachbandkabel der Kamera einschieben – die blanken Kontaktstreifen zeigen
+          dabei je nach Pi-Modell in eine bestimmte Richtung. Am zuverlässigsten: die
+          beiliegende Kurzanleitung von Raspberry Pi zum jeweiligen Pi-Modell befolgen, da
+          sich die Einbaurichtung zwischen den Modellen unterscheidet</li>
+          <li>Klemme wieder herunterdrücken, bis sie einrastet – das Kabel darf sich dann
+          nicht mehr leicht herausziehen lassen</li>
+        </ol>
+        <p class="muted" style="font-size:.85rem">Nach dem Einschalten sollte die Kamera automatisch
+        erkannt werden (siehe Warnhinweis oben auf der Startseite, falls nicht). Falls trotz
+        korrektem Anschluss weiterhin „Keine Kamera erkannt“ angezeigt wird: in
+        <code>sudo raspi-config</code> unter „Interface Options“ prüfen, ob die Kamera-Schnittstelle
+        aktiviert ist, und den Sitz des Kabels an beiden Enden (Kamera-Platine und Pi) nochmal
+        kontrollieren.</p>
+
+        <h3 class="hilfe-titel">🚪 Türkontaktschalter anschließen</h3>
+        <p>Benötigt wird ein einfacher <strong>Öffner- oder Schließer-Kontakt</strong> (z. B. ein
+        Magnet-Reedkontakt wie bei Fenster-/Tür-Alarmanlagen, oder ein simpler Mikroschalter) –
+        kein spezielles Bauteil, kein Vorwiderstand nötig (die interne Pull-Up-Funktion ist im
+        Programm bereits aktiviert).</p>
+        <p class="muted" style="font-size:.85rem">Anschließen (Pi ausgeschaltet):</p>
+        <ol style="margin:.3rem 0 .8rem; padding-left:1.2rem; font-size:.9rem">
+          <li>Ein Kabelende an <strong>GPIO17</strong> (physischer Pin <strong>11</strong> in der
+          oberen Pin-Reihe, von der Ecke aus gezählt)</li>
+          <li>Das andere Kabelende an einen beliebigen <strong>GND</strong>-Pin (z. B. Pin
+          <strong>9</strong>, direkt daneben)</li>
+          <li>Den Schalter so am Deckel/an der Tür montieren, dass er beim <strong>Öffnen der
+          Tür schließt</strong> (Kontakt geschlossen = Tür offen) und beim Schließen der Tür
+          wieder öffnet</li>
+        </ol>
+        <p class="muted" style="font-size:.85rem">Test: unter „🧪 Simulation“ lässt sich die
+        Türöffnungs-Logik auch ganz ohne Schalter durchspielen. Reagiert die Anzeige „🚪 Tür“ auf
+        der Startseite nicht auf den echten Schalter, zuerst die Verkabelung (fester Sitz an
+        beiden Pins) und dann ggf. die Kontaktrichtung (Öffner/Schließer vertauscht) prüfen.</p>
       </details>
 
       <details class="kamera-details system-details">
