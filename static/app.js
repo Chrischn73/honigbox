@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.2.2';
+const APP_VERSION = 'v1.2.4';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -31,6 +31,8 @@ const speicherGroesseFeld = document.getElementById('speicher-groesse-feld');
 const speicherInfoEl = document.getElementById('speicher-info');
 const speicherUebernehmenBtn = document.getElementById('speicher-uebernehmen');
 const ramNeustartWarnungEl = document.getElementById('ram-neustart-warnung');
+const linkSetupSeiteEl = document.getElementById('link-setup-seite');
+const einstellungenDetailsListe = document.querySelectorAll('#ansicht-einstellungen details');
 const fotoZeitplanFelderContainer = document.getElementById('foto-zeitplan-felder');
 const fotoZeitplanSpeichernBtn = document.getElementById('foto-zeitplan-speichern');
 const fotoZeitplanZuruecksetzenBtn = document.getElementById('foto-zeitplan-zuruecksetzen');
@@ -846,6 +848,24 @@ simDauerSpeichernBtn.addEventListener('click', speichereSimulationDauer);
 speicherOrtSel.addEventListener('change', aktualisiereSpeicherFeldSichtbarkeit);
 speicherUebernehmenBtn.addEventListener('click', speicherUebernehmen);
 hauptTabBtns.forEach((btn) => btn.addEventListener('click', () => zeigeAnsicht(btn.dataset.ansicht)));
+
+// Setup-Seite (WLAN-Einrichtung) laeuft als eigener Dienst auf Port 80, nicht
+// auf dem Galerie-Port dieser Seite - deshalb Host ohne Port neu zusammensetzen
+// statt einfach die aktuelle URL zu nehmen. Trifft den Normalfall (Port 80 frei
+// beim Einrichten); laeuft die Setup-Seite ausnahmsweise auf einem Ausweich-Port,
+// muesste die Adresse von Hand aufgerufen werden.
+linkSetupSeiteEl.href = `${location.protocol}//${location.hostname}/wifi`;
+
+// Akkordeon: von den Einstellungen-Abschnitten soll immer nur einer
+// aufgeklappt sein - macht die lange Liste uebersichtlicher.
+einstellungenDetailsListe.forEach((details) => {
+  details.addEventListener('toggle', () => {
+    if (!details.open) return;
+    einstellungenDetailsListe.forEach((andere) => {
+      if (andere !== details) andere.open = false;
+    });
+  });
+});
 
 zeigeAnsicht('fotos');
 ladeKameraEinstellungen();

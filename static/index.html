@@ -26,7 +26,7 @@
   </div>
 
   <nav class="haupt-tabs">
-    <button class="haupt-tab-btn" id="haupt-tab-fotos" data-ansicht="fotos">📷 Fotos</button>
+    <button class="haupt-tab-btn" id="haupt-tab-fotos" data-ansicht="fotos">📷 Aufnahmen</button>
     <button class="haupt-tab-btn" id="haupt-tab-einstellungen" data-ansicht="einstellungen">⚙️ Einstellungen</button>
   </nav>
 
@@ -45,7 +45,7 @@
     </section>
 
     <section id="ansicht-einstellungen" class="ansicht hidden">
-      <details class="kamera-details" open>
+      <details class="kamera-details">
         <summary>📷 Fotos</summary>
         <div id="foto-zeitplan-felder" class="kamera-felder"></div>
         <div class="kamera-aktionen">
@@ -132,6 +132,7 @@
         <summary>⚡ System</summary>
         <p class="warnhinweis" id="ram-neustart-warnung" hidden>⚠️ Fotos liegen aktuell im RAM-Speicher (Einstellung unter „📷 Fotos“ → „Speicherort“) – bei Neustart/Herunterfahren gehen alle noch nicht archivierten Fotos dabei verloren.</p>
         <div class="kamera-aktionen">
+          <a class="btn btn-sm btn-ghost" id="link-setup-seite" href="#" target="_blank" rel="noopener">📶 Setup-Seite (WLAN) öffnen</a>
           <button class="btn btn-sm btn-ghost" id="btn-dienste-neustart">🔁 Dienste neu starten</button>
           <button class="btn btn-sm btn-danger" id="btn-neustart">🔄 Pi neu starten</button>
           <button class="btn btn-sm btn-danger" id="btn-herunterfahren">⏻ Pi herunterfahren</button>

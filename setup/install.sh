@@ -320,7 +320,7 @@ log "HonigBox im gemeinsamen Pi-Setup-Portal registrieren"
 cat > /opt/pi-setup-portal/apps.d/honigbox.json << JSONEOF
 {
   "id": "honigbox",
-  "label": "HonigBox Galerie",
+  "label": "BeeTown HonigBox",
   "emoji": "🍯",
   "app_port_default": 8090,
   "app_port_env_file": "/etc/default/honigbox-galerie",
@@ -466,14 +466,14 @@ if [ "$IS_PI" -eq 1 ]; then
    Setup / WLAN:        $SETUP_URL
 EOF
     cat > /opt/pi-setup-portal/issue.d/10-honigbox.txt << EOF
-   HonigBox Galerie:    http://$EFFECTIVE_HOSTNAME.local:$GALERIE_PORT
+   BeeTown HonigBox:    http://$EFFECTIVE_HOSTNAME.local:$GALERIE_PORT
 EOF
     /opt/pi-setup-portal/regen-issue.sh
 
     echo
     echo "======================================================================"
     echo " Setup / WLAN:        $SETUP_URL"
-    echo " HonigBox Galerie:    http://$EFFECTIVE_HOSTNAME.local:$GALERIE_PORT"
+    echo " BeeTown HonigBox:    http://$EFFECTIVE_HOSTNAME.local:$GALERIE_PORT"
     echo " WLAN-Einstellungen:  $SETUP_URL/wifi (immer erreichbar)"
     echo " Backups:             $SETUP_URL/backup"
     echo " Update:              $SETUP_URL/update"
@@ -511,7 +511,7 @@ else
     echo
     echo "======================================================================"
     echo " Setup / WLAN:      $SETUP_URL"
-    echo " HonigBox Galerie:  http://$(hostname).local:$GALERIE_PORT"
+    echo " BeeTown HonigBox:  http://$(hostname).local:$GALERIE_PORT"
     echo "======================================================================"
     echo " Fertig - kein Neustart erforderlich."
 fi

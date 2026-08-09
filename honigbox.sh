@@ -36,8 +36,8 @@ os.chmod(EINSTELLUNGEN_DIR, 0o777)
 SWITCH_PIN = 17  # BCM-Nummerierung
 
 # Schalter zwischen GPIO17 und GND, interner Pull-Up.
-# Kontakt geschlossen (is_pressed=True)  -> Tuer zu
-# Kontakt offen      (is_pressed=False) -> Tuer offen
+# Kontakt geschlossen (is_pressed=True)  -> Tuer offen
+# Kontakt offen      (is_pressed=False) -> Tuer zu
 door_switch = Button(SWITCH_PIN, pull_up=True, bounce_time=0.2)
 
 WAIT_CONFIRM = 1        # Sek. bis Bestaetigungsmessung nach erster Erkennung
@@ -45,7 +45,7 @@ CONFIRM_ROUNDS = 2       # Anzahl Bestaetigungen, um Prellen auszuschliessen
 CONFIRM_DELAY = 2        # Sek. zwischen Bestaetigungen
 WAIT_ESCALATE_1 = 200    # Sek. offen bis push2.sh (Eskalationsstufe 1)
 WAIT_ESCALATE_2 = 1800   # weitere Sek. offen bis push3.sh (Eskalationsstufe 2)
-LOOP_DELAY = 2           # Sek. zwischen Durchlaeufen der Hauptschleife
+LOOP_DELAY = 1           # Sek. zwischen Durchlaeufen der Hauptschleife
 LOOP_TICK = 1            # Sek. zwischen Pruefungen waehrend die Tuer offen ist
 
 FOTO_ZEITPLAN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".foto-zeitplan.json")
@@ -92,7 +92,7 @@ def simulation_aktiv():
 
 
 def door_is_open():
-    offen = simulation_aktiv() or not door_switch.is_pressed
+    offen = simulation_aktiv() or door_switch.is_pressed
     schreibe_status(offen)
     return offen
 
