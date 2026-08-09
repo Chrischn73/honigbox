@@ -124,22 +124,8 @@ def run(script, *args):
     subprocess.run([f"{SCRIPT_DIR}/{script}", *args], check=False)
 
 
-def push(meldung_id, foto_pfad=None):
-    if foto_pfad:
-        run("send_pushover.sh", meldung_id, foto_pfad)
-    else:
-        run("send_pushover.sh", meldung_id)
-
-
-def neuestes_foto_pfad():
-    try:
-        dateien = [f for f in os.listdir(BILDER_DIR) if f.lower().endswith((".jpg", ".jpeg"))]
-        if not dateien:
-            return None
-        neuste = max(dateien, key=lambda f: os.path.getmtime(os.path.join(BILDER_DIR, f)))
-        return os.path.join(BILDER_DIR, neuste)
-    except OSError:
-        return None
+def push(meldung_id):
+    run("send_pushover.sh", meldung_id)
 
 
 def confirm_still_open():
@@ -255,12 +241,7 @@ def behandle_tueroeffnung():
 
         print("Tür wurde geöffnet")
         time.sleep(2)  # wie zuvor in push.sh
-        # Eigenes Foto extra fuer die Pushover-Meldung (zaehlt nicht auf
-        # max_anzahl in warte_waehrend_offen an - eins mehr pro Tueroeffnung
-        # ist hier bewusst in Kauf genommen), damit man sofort auf dem Handy
-        # sieht, was gerade los ist, statt nur den Text zu lesen.
-        run("foto.sh")
-        push("geoeffnet", neuestes_foto_pfad())
+        push("geoeffnet")
 
         eskalationen = [
             (WAIT_ESCALATE_1, "eskalation1"),

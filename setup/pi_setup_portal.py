@@ -67,6 +67,11 @@ kein Foto-Handling, nichts), es kennt nur das generische Schema.
   und fuehrt dessen setup/install.sh aus (siehe _run_companion_install_in_
   background). Rein deklarativ: dieses Skript kennt auch dabei keine
   App-Namen, nur was im "companion"-Objekt steht.
+- /update: zusaetzlich pro App ein Button "install.sh erneut ausfuehren"
+  (siehe _run_install_script_in_background) - ein normales, file_map-
+  basiertes Update kopiert nur App-eigene Dateien, NIE install.sh-eigene
+  Aenderungen (Boot-Bildschirm, apps.d-Descriptor-Felder, der gemeinsame
+  Portal-Code selbst). Erspart dafuer den manuellen SSH-Login.
 
 Nur Python-Standardbibliothek.
 """
@@ -89,7 +94,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
 
-PORTAL_VERSION = "1.3.0"
+PORTAL_VERSION = "1.4.0"
 
 PORTAL_DIR = "/opt/pi-setup-portal"
 # Jede App legt hier per eigenem install.sh genau eine Datei <app-id>.json
@@ -745,6 +750,26 @@ function startUpdateAll() {{
   modal.classList.add('show');
   fetch('/update/run-all', {{method: 'POST'}});
   updatePoll('_all', content, modal);
+  return false;
+}}
+function startInstallRun(appId) {{
+  if (!confirm('install.sh jetzt erneut von GitHub laden und ausführen? Sinnvoll nach einem ' +
+               'Update, das auch install.sh selbst betrifft (z. B. neue Setup-Funktionen).')) {{
+    return false;
+  }}
+  var modal = document.getElementById('update-modal');
+  var content = document.getElementById('update-modal-content');
+  content.innerHTML = '<h1>""" + SPINNER_SVG + """install.sh wird ausgeführt…</h1>' +
+    '<p class="muted">Lädt die neueste Version von GitHub und führt deren install.sh aus. ' +
+    'Das kann einige Minuten dauern – bitte die Seite nicht schließen.</p>';
+  modal.classList.add('show');
+  fetch('/update/run-install/' + appId, {{method: 'POST'}}).then(r => r.json()).then(function(d) {{
+    if (!d.started) {{
+      content.innerHTML = '<div class="msg err">❌ ' + (d.error || 'Konnte nicht gestartet werden.') + '</div>';
+      return;
+    }}
+    updatePoll(appId, content, modal);
+  }});
   return false;
 }}
 function updateVersionSwitchButton(select, appId) {{
@@ -1866,56 +1891,85 @@ def _run_update_all_in_background():
         UPDATE_STATE["_all"] = {"done": True, "ok": False, "detail": f"Unerwarteter Fehler: {e}"}
 
 
+def _download_and_run_install_script(github_repo, install_script_path, label):
+    """Laedt das neueste GitHub-Release herunter und fuehrt darin das
+    angegebene install.sh aus - bewusst KEIN Nachbau der Installationslogik
+    hier (die steckt bereits vollstaendig, getestet und gepflegt in
+    install.sh selbst: apt-Pakete, systemd-Dienste, Hostname, Kamera/GPIO,
+    apps.d-Descriptor usw.). Dieses Skript hier laeuft laut
+    pi-setup-portal.service bereits als root, ein "sudo" vor dem bash-Aufruf
+    ist deshalb nicht noetig - install.sh prueft selbst per 'id -u', dass es
+    als root laeuft. Gemeinsamer Kern fuer ZWEI Faelle: eine Partner-App per
+    "companion"-Feld nachinstallieren (siehe _run_companion_install_in_
+    background) UND das install.sh einer bereits installierten App erneut
+    ausfuehren (siehe _run_install_script_in_background) - z. B. weil eine
+    Aenderung NUR install.sh selbst betrifft und deshalb nie per normalem,
+    file_map-basiertem Update (perform_update()) uebernommen wird. Gibt
+    (ok, detail) zurueck, wirft KEINE Exception weiter (Aufrufer muss trotzdem
+    subprocess.TimeoutExpired/Exception selbst abfangen - die Ausnahmen aus
+    urllib/tarfile hier drin sind bewusst NICHT gefangen, damit der Aufrufer
+    seinen jeweils eigenen State-Speicher im except-Block aktualisieren kann)."""
+    release = _fetch_latest_release_for_repo(github_repo)
+    if not release or not release.get("tarball_url"):
+        return False, "Neueste Version konnte nicht ermittelt werden."
+    req = urllib.request.Request(release["tarball_url"], headers={"User-Agent": "Pi-Setup-Install-Run"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        archive_data = resp.read()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with tarfile.open(fileobj=io.BytesIO(archive_data), mode="r:gz") as tar:
+            tar.extractall(path=tmpdir, filter="data")
+        entries = os.listdir(tmpdir)
+        if len(entries) != 1:
+            return False, "Unerwarteter Archivinhalt (GitHub-Tarball-Struktur hat sich geaendert)."
+        src_root = os.path.join(tmpdir, entries[0])
+        script = os.path.join(src_root, install_script_path)
+        if not os.path.isfile(script):
+            return False, f"Installationsskript nicht gefunden ({install_script_path})."
+        # Kann je nach App mehrere Minuten dauern (apt-get, Kamera-Setup
+        # usw.) - grosszuegiges Timeout, damit ein echter Haenger trotzdem
+        # irgendwann als Fehler zurueckkommt statt den Thread fuer immer zu
+        # blockieren.
+        result = subprocess.run(["bash", script], cwd=src_root, capture_output=True, text=True, timeout=1800)
+        if result.returncode == 0:
+            return True, f"{label}: install.sh wurde erfolgreich ausgefuehrt."
+        fehlerausgabe = (result.stderr or result.stdout or "").strip()[-800:]
+        return False, f"install.sh fehlgeschlagen (Exit-Code {result.returncode}): {fehlerausgabe}"
+
+
 def _run_companion_install_in_background(companion):
-    """Laedt das neueste GitHub-Release der Partner-App herunter und fuehrt
-    deren eigenes setup/install.sh aus - bewusst KEIN Nachbau der
-    Installationslogik hier (die steckt bereits vollstaendig, getestet und
-    gepflegt in install.sh selbst: apt-Pakete, systemd-Dienste, Hostname,
-    Kamera/GPIO usw.). Dieses Skript hier laeuft laut pi-setup-portal.service
-    bereits als root, ein "sudo" vor dem bash-Aufruf ist deshalb nicht
-    noetig - install.sh prueft selbst per 'id -u', dass es als root laeuft."""
     app_id = companion["app_id"]
     try:
-        release = _fetch_latest_release_for_repo(companion["github_repo"])
-        if not release or not release.get("tarball_url"):
-            _companion_install_state(app_id).update(
-                done=True, ok=False, detail="Neueste Version konnte nicht ermittelt werden.")
-            return
-        req = urllib.request.Request(release["tarball_url"], headers={"User-Agent": "Pi-Setup-Companion-Install"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            archive_data = resp.read()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with tarfile.open(fileobj=io.BytesIO(archive_data), mode="r:gz") as tar:
-                tar.extractall(path=tmpdir, filter="data")
-            entries = os.listdir(tmpdir)
-            if len(entries) != 1:
-                _companion_install_state(app_id).update(
-                    done=True, ok=False, detail="Unerwarteter Archivinhalt (GitHub-Tarball-Struktur hat sich geaendert).")
-                return
-            src_root = os.path.join(tmpdir, entries[0])
-            script = os.path.join(src_root, companion.get("install_script_path", "setup/install.sh"))
-            if not os.path.isfile(script):
-                _companion_install_state(app_id).update(
-                    done=True, ok=False, detail=f"Installationsskript nicht gefunden ({companion.get('install_script_path', 'setup/install.sh')}).")
-                return
-            # Kann je nach App mehrere Minuten dauern (apt-get, Kamera-Setup
-            # usw.) - grosszuegiges Timeout, damit ein echter Haenger
-            # trotzdem irgendwann als Fehler zurueckkommt statt den Thread
-            # fuer immer zu blockieren.
-            result = subprocess.run(["bash", script], cwd=src_root, capture_output=True, text=True, timeout=1800)
-            if result.returncode == 0:
-                _companion_install_state(app_id).update(
-                    done=True, ok=True, detail=f"{companion['label']} wurde installiert.")
-            else:
-                fehlerausgabe = (result.stderr or result.stdout or "").strip()[-800:]
-                _companion_install_state(app_id).update(
-                    done=True, ok=False,
-                    detail=f"Installation fehlgeschlagen (Exit-Code {result.returncode}): {fehlerausgabe}")
+        ok, detail = _download_and_run_install_script(
+            companion["github_repo"], companion.get("install_script_path", "setup/install.sh"), companion["label"])
+        _companion_install_state(app_id).update(done=True, ok=ok, detail=detail)
     except subprocess.TimeoutExpired:
         _companion_install_state(app_id).update(
             done=True, ok=False, detail="Installation hat zu lange gedauert (Timeout).")
     except Exception as e:
         _companion_install_state(app_id).update(done=True, ok=False, detail=f"Unerwarteter Fehler: {e}")
+
+
+def _run_install_script_in_background(app):
+    """Fuehrt install.sh der App SELBST erneut aus (die App ist hier -
+    anders als bei _run_companion_install_in_background - schon registriert).
+    Fuer Aenderungen, die ausschliesslich install.sh selbst betreffen und
+    deshalb nie per normalem Update (perform_update(), kopiert nur die
+    Dateien aus 'update.file_map') uebernommen werden: Boot-Bildschirm
+    (/etc/issue), apps.d/<id>.json-Descriptor-Felder, der gemeinsame
+    Portal-Code selbst (siehe Warnhinweis in perform_update()). Nutzt
+    bewusst UPDATE_STATE/_update_state() statt eines eigenen State-Speichers -
+    anders als bei einer noch unregistrierten Partner-App blockt die GET
+    /update/status/<id>-Route hier nichts, die App ist ja schon in apps.d/
+    vorhanden."""
+    app_id = app["id"]
+    try:
+        ok, detail = _download_and_run_install_script(
+            app["update"]["github_repo"], app.get("install_script_path", "setup/install.sh"), app["label"])
+        _update_state(app_id).update(done=True, ok=ok, detail=detail)
+    except subprocess.TimeoutExpired:
+        _update_state(app_id).update(done=True, ok=False, detail="Ausführung hat zu lange gedauert (Timeout).")
+    except Exception as e:
+        _update_state(app_id).update(done=True, ok=False, detail=f"Unerwarteter Fehler: {e}")
 
 
 def render_update_card(app, message=""):
@@ -1994,6 +2048,11 @@ werden dabei ausgeschaltet, falls es ein Rueckschritt ist):</p>
   </label>
   <button type="submit" class="btn-small">Einstellung speichern</button>
 </form>
+
+<p class="muted" style="font-size:.85rem; margin-top:1rem;">Ein normales Update kopiert nur die
+App-eigenen Dateien - Änderungen an <code>install.sh</code> selbst (z. B. neue Setup-Funktionen,
+Descriptor-Änderungen) werden dabei NICHT übernommen. Falls nötig, hier ohne SSH nachholen:</p>
+<button type="button" class="btn-small" onclick="return startInstallRun('{app_id}')">🔧 install.sh erneut ausführen</button>
 {changelog_block}
 </div>"""
 
@@ -2397,6 +2456,19 @@ class BaseHandler(BaseHTTPRequestHandler):
                 return
             _update_state(app["id"]).update(done=False, ok=None, detail=None)
             threading.Thread(target=_run_update_in_background, args=(app,), daemon=True).start()
+            self._send_json({"started": True})
+            return
+        m = re.match(r"^/update/run-install/([^/]+)$", path)
+        if m:
+            app = get_app(unquote(m.group(1)))
+            if not app:
+                self._not_found()
+                return
+            if _update_state(app["id"]).get("done") is False:
+                self._send_json({"started": False, "error": "Fuer diese App laeuft bereits ein Vorgang."})
+                return
+            _update_state(app["id"]).update(done=False, ok=None, detail=None)
+            threading.Thread(target=_run_install_script_in_background, args=(app,), daemon=True).start()
             self._send_json({"started": True})
             return
         m = re.match(r"^/companion/install/([^/]+)$", path)

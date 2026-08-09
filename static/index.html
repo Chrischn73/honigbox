@@ -17,7 +17,7 @@
         by <img src="./imkerei-logo.jpeg" alt="Imkerei Frerichs" class="topbar-logo">
       </div>
     </div>
-    <a class="topbar-setup-btn" id="link-setup-seite" href="#" target="_blank" rel="noopener">⚙️ Setup / Update / Backup</a>
+    <a class="topbar-setup-btn" id="link-setup-seite" href="#">⚙️ Setup / Update / Backup</a>
   </header>
 
   <div class="status-leiste">
@@ -135,7 +135,7 @@
       <details class="kamera-details">
         <summary>❓ Hilfe</summary>
 
-        <p>BeeTown HonigBox überwacht die Tür einer Bienenbox: Ein Kontaktschalter erkennt, wenn sie
+        <p>BeeTown HonigBox überwacht die Tür einer Honig-Verkaufsbox: Ein Kontaktschalter erkennt, wenn sie
         geöffnet wird, eine Kamera macht dabei Fotos, und per Pushover kommt eine Benachrichtigung
         aufs Handy. Diese Seite erklärt die drei Dinge, die dafür einmalig eingerichtet werden
         müssen: Kamera, Türschalter und Pushover.</p>
@@ -203,17 +203,6 @@
           <li>Beide Schlüssel (User Key + API Token) unter „🔔 Pushover-Einstellungen“ in HonigBox
           eintragen und speichern, danach über „📨 Test senden“ prüfen</li>
         </ol>
-
-        <hr class="hilfe-trenner">
-        <h3 class="hilfe-titel">🌐 Erreichbarkeit verbessern (falls "honigbox.local" mal nicht geht)</h3>
-        <p>Der Name <code>honigbox.local</code> funktioniert über eine Technik namens mDNS – die ist
-        praktisch, aber je nach Router/WLAN (z. B. Mesh-Systeme, manche Gast-Netze) gelegentlich nicht
-        ganz zuverlässig. Das liegt nicht an HonigBox selbst, sondern an dieser Technik allgemein.</p>
-        <p class="muted" style="font-size:.85rem">Robuster: dem Pi im Router eine <strong>feste
-        IP-Adresse reservieren</strong> (meist unter „DHCP“ oder „Netzwerkgeräte“ in der
-        Router-Oberfläche, anhand der MAC-Adresse des Pi) und diese feste IP direkt verwenden/als
-        Lesezeichen speichern, statt auf <code>.local</code> zu setzen. Der Name bleibt trotzdem
-        nutzbar, ist dann aber nur noch ein bequemer Zusatz, kein Muss.</p>
       </details>
 
       <details class="kamera-details system-details">
