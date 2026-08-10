@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.2.8';
+const APP_VERSION = 'v1.2.9';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -264,6 +264,21 @@ function zeigeAnsicht(name) {
 // Foto blaettern zu koennen.
 let aktuelleBilderListe = [];
 
+// Entfernt ein Foto lokal aus Liste+Grid (nach erfolgreichem Archivieren/
+// Loeschen), OHNE die Seite neu vom Server zu laden - damit die Lightbox
+// nahtlos beim naechsten/vorherigen Bild weitermachen kann. Gibt den Index
+// zurueck, an dem das Foto stand (fuer die Auswahl des naechsten Bildes).
+function entferneFotoLokal(datei) {
+  const i = aktuelleBilderListe.indexOf(datei);
+  if (i === -1) return -1;
+  const kopie = aktuelleBilderListe.slice();
+  kopie.splice(i, 1);
+  ausgewaehlt.delete(datei);
+  render(kopie);
+  aktualisiereAuswahlLeiste();
+  return i;
+}
+
 function oeffneLightbox(startIndex) {
   let index = startIndex;
   const back = document.createElement('div');
@@ -272,26 +287,60 @@ function oeffneLightbox(startIndex) {
   const figure = document.createElement('figure');
   const img = document.createElement('img');
   const caption = document.createElement('figcaption');
-  figure.append(img, caption);
+  const aktionen = document.createElement('div');
+  aktionen.className = 'lightbox-aktionen';
+  figure.append(img, caption, aktionen);
 
-  const mehrereBilder = aktuelleBilderListe.length > 1;
   let prevBtn = null;
   let nextBtn = null;
+
+  function schliessen() {
+    back.remove();
+    document.removeEventListener('keydown', tastenHandler);
+  }
 
   function zeigeIndex(i) {
     index = i;
     const datei = aktuelleBilderListe[index];
     img.src = bildUrl(datei);
     caption.textContent = datei;
-    if (mehrereBilder) {
+    if (prevBtn) {
       prevBtn.disabled = index <= 0;
       nextBtn.disabled = index >= aktuelleBilderListe.length - 1;
     }
   }
 
-  function schliessen() {
-    back.remove();
-    document.removeEventListener('keydown', tastenHandler);
+  // Nach Archivieren/Loeschen: zum naechsten Foto weiter (oder Lightbox
+  // schliessen, falls keine Fotos mehr uebrig sind).
+  function weiterNachAktion(entfernterIndex) {
+    if (aktuelleBilderListe.length === 0) { schliessen(); return; }
+    zeigeIndex(Math.min(entfernterIndex, aktuelleBilderListe.length - 1));
+  }
+
+  async function archivieren() {
+    const datei = aktuelleBilderListe[index];
+    if (!await bestaetigen(`"${datei}" in Archiv verschieben?`)) return;
+    const res = await fetch('/api/photos/archivieren', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dateien: [datei] }),
+    });
+    if (!res.ok) { toast('Fehler beim Archivieren'); return; }
+    toast('Archiviert');
+    weiterNachAktion(entferneFotoLokal(datei));
+  }
+
+  async function loeschen() {
+    const datei = aktuelleBilderListe[index];
+    if (!await bestaetigen(`"${datei}" endgültig löschen?`)) return;
+    const res = await fetch('/api/photos/loeschen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dateien: [datei], archiv: zeigeArchiv }),
+    });
+    if (!res.ok) { toast('Fehler beim Löschen'); return; }
+    toast('Gelöscht');
+    weiterNachAktion(entferneFotoLokal(datei));
   }
 
   function tastenHandler(e) {
@@ -301,8 +350,21 @@ function oeffneLightbox(startIndex) {
   }
   document.addEventListener('keydown', tastenHandler);
 
+  if (!zeigeArchiv) {
+    const archivBtn = document.createElement('button');
+    archivBtn.className = 'btn btn-sm btn-ghost';
+    archivBtn.textContent = '📦 Archivieren';
+    archivBtn.addEventListener('click', (e) => { e.stopPropagation(); archivieren(); });
+    aktionen.appendChild(archivBtn);
+  }
+  const loeschenBtn = document.createElement('button');
+  loeschenBtn.className = 'btn btn-sm btn-danger';
+  loeschenBtn.textContent = '🗑️ Löschen';
+  loeschenBtn.addEventListener('click', (e) => { e.stopPropagation(); loeschen(); });
+  aktionen.appendChild(loeschenBtn);
+
   back.append(figure);
-  if (mehrereBilder) {
+  if (aktuelleBilderListe.length > 1) {
     // Als Overlay UEBER dem Bild (position:absolute in CSS) - nimmt dem Bild
     // dadurch keinen eigenen Platz weg, es bleibt auf dem Handy genauso gross
     // wie ohne Navigation.

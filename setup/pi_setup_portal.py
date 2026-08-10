@@ -94,7 +94,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
 
-PORTAL_VERSION = "1.5.0"
+PORTAL_VERSION = "1.6.0"
 
 PORTAL_DIR = "/opt/pi-setup-portal"
 # Jede App legt hier per eigenem install.sh genau eine Datei <app-id>.json
@@ -220,6 +220,7 @@ STYLE = """
   .header {{ display: flex; align-items: center; gap: .6rem; margin-bottom: 1rem; }}
   .header .logo {{ font-size: 1.8rem; }}
   .header .name {{ font-weight: bold; font-size: 1.1rem; }}
+  .header .portal-version {{ display: block; font-weight: normal; font-size: .7rem; opacity: .6; }}
   .btn-row {{ display: flex; gap: .5rem; margin-top: 1.5rem; }}
   .btn-row form {{ flex: 1; margin: 0; }}
   .btn-small {{ margin-top: 0; padding: .5rem; font-size: .85rem; }}
@@ -949,7 +950,9 @@ def _apps_heading():
 
 def render_header():
     emoji, text = _apps_heading()
-    return f'<div class="header"><span class="logo">{emoji or "🐝"}</span><div class="name">{html.escape(text)}</div></div>'
+    return (f'<div class="header"><span class="logo">{emoji or "🐝"}</span>'
+            f'<div class="name">{html.escape(text)}'
+            f'<span class="portal-version">Setup-Portal v{PORTAL_VERSION}</span></div></div>')
 
 
 def render_app_beschreibungen():
