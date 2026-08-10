@@ -67,8 +67,8 @@ kein Foto-Handling, nichts), es kennt nur das generische Schema.
   und fuehrt dessen setup/install.sh aus (siehe _run_companion_install_in_
   background). Rein deklarativ: dieses Skript kennt auch dabei keine
   App-Namen, nur was im "companion"-Objekt steht.
-- /update: zusaetzlich pro App ein Button "install.sh erneut ausfuehren"
-  (siehe _run_install_script_in_background) - ein normales, file_map-
+- /update: zusaetzlich pro App ein Button "Komplett-Installation erneut
+  ausfuehren" (siehe _run_install_script_in_background) - ein normales, file_map-
   basiertes Update kopiert nur App-eigene Dateien, NIE install.sh-eigene
   Aenderungen (Boot-Bildschirm, apps.d-Descriptor-Felder, der gemeinsame
   Portal-Code selbst). Erspart dafuer den manuellen SSH-Login.
@@ -94,7 +94,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
 
-PORTAL_VERSION = "1.6.2"
+PORTAL_VERSION = "1.6.3"
 
 PORTAL_DIR = "/opt/pi-setup-portal"
 # Jede App legt hier per eigenem install.sh genau eine Datei <app-id>.json
@@ -2090,7 +2090,7 @@ werden dabei ausgeschaltet, falls es ein Rueckschritt ist):</p>
 <p class="muted" style="font-size:.85rem; margin-top:1rem;">Ein normales Update kopiert nur die
 App-eigenen Dateien - Änderungen an <code>install.sh</code> selbst (z. B. neue Setup-Funktionen,
 Descriptor-Änderungen) werden dabei NICHT übernommen. Falls nötig, hier ohne SSH nachholen:</p>
-<button type="button" class="btn-small" onclick="return startInstallRun('{app_id}')">🔧 install.sh erneut ausführen</button>
+<button type="button" class="btn-small" onclick="return startInstallRun('{app_id}')">🔧 Komplett-Installation erneut ausführen</button>
 {changelog_block}
 </div>"""
 
