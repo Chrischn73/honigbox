@@ -13,12 +13,13 @@
 # erneut laufen lassen. Bereits vorhandene Pushover-Zugangsdaten
 # (pushover.conf) und Fotos werden dabei NICHT ueberschrieben.
 #
-# WICHTIG (an KI-Assistenten wie Claude UND Menschen): pi_setup_portal.py
-# in diesem Ordner ist nur eine Deployment-KOPIE, NICHT App-eigener Code -
-# NICHT direkt bearbeiten. Kanonische Quelle (dort bearbeiten, dann
-# ./sync.sh dort ausfuehren):
-#   /media/SSD/Sichern/claude/pi-setup-portal/pi_setup_portal.py
-# Siehe den ausfuehrlichen Warnhinweis am Anfang von pi_setup_portal.py.
+# WICHTIG (an KI-Assistenten wie Claude UND Menschen): das gemeinsame
+# Setup-Portal (WLAN/Backup/Update/Hilfe fuer alle registrierten Apps)
+# ist NICHT mehr Teil dieses Repos - es ist das eigenstaendige GitHub-Repo
+# "Chrischn73/setup-portal" (lokal: /media/SSD/Sichern/claude/setup-portal/).
+# Dieses Skript hier laedt es nur bei Bedarf per Bootstrap herunter (siehe
+# Abschnitt "Gemeinsames Setup-Portal sicherstellen" weiter unten) -
+# Aenderungen am Portal-Code gehoeren dort hin, nicht hierher.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -55,8 +56,7 @@ for f in honigbox.sh foto.sh send_pushover.sh galerie_server.py speicher_umschal
         exit 1
     fi
 done
-for f in pi_setup_portal.py pi-setup-portal.sh pi-setup-portal.service regen-issue.sh \
-         honigbox-backup.sh honigbox-backup-rotate.py honigbox-backup.service honigbox-backup.timer \
+for f in honigbox-backup.sh honigbox-backup-rotate.py honigbox-backup.service honigbox-backup.timer \
          honigbox-update-check.service honigbox-update-check.timer honigbox-restore-hook.sh; do
     if [ ! -e "$SETUP_DIR/$f" ]; then
         echo "FEHLER: $SETUP_DIR/$f fehlt."
@@ -187,66 +187,40 @@ cp "$PROJECT_DIR/honigbox.service" /etc/systemd/system/honigbox.service
 cp "$PROJECT_DIR/honigbox-galerie.service" /etc/systemd/system/honigbox-galerie.service
 
 # ---------------------------------------------------------------------------
-log "Gemeinsames Pi-Setup-Portal einrichten (/opt/pi-setup-portal)"
-# Seit Kurzem bringt HonigBox keine eigenstaendige Setup-Seite mehr mit,
-# sondern registriert sich nur noch bei einem gemeinsamen Portal, das auch
+log "Gemeinsames Setup-Portal sicherstellen (/opt/setup-portal)"
+# HonigBox registriert sich nur noch bei einem gemeinsamen Portal, das auch
 # die Imker-App (BeeTown) mitnutzen kann, falls sie auf demselben Pi
-# installiert ist bzw. wird - siehe apps.d/honigbox.json weiter unten.
-mkdir -p /opt/pi-setup-portal/apps.d /opt/pi-setup-portal/issue.d \
-         /opt/pi-setup-portal/state/honigbox /opt/pi-setup-portal/hilfe-bilder/_shared
-
-# Portal-Code nur aktualisieren, wenn die mitgelieferte Version neuer (oder
-# noch gar nicht installiert) ist - andernfalls koennte ein aelterer
-# HonigBox-Stand eine von der Imker-App bereits aktualisierte, neuere
-# Portal-Version wieder zurueckstufen (und umgekehrt).
-BUNDLED_PORTAL_VERSION="$(grep -oP '^PORTAL_VERSION = "\K[^"]+' "$SETUP_DIR/pi_setup_portal.py")" || {
-    echo "FEHLER: Konnte PORTAL_VERSION nicht aus $SETUP_DIR/pi_setup_portal.py auslesen."
-    exit 1
-}
-INSTALLED_PORTAL_VERSION="$(grep -oP '^PORTAL_VERSION = "\K[^"]+' /opt/pi-setup-portal/pi_setup_portal.py 2>/dev/null || echo "0")"
-# PORTAL_CODE_UPDATED steuert weiter unten, ob pi-setup-portal.service neu
-# gestartet wird. Ein Neustart ist nur bei tatsaechlich neuem Code sinnvoll
-# - dieser Dienst wird von der jeweils anderen App mitbenutzt, ein
-# unnoetiger Neustart wuerde deren gerade laufende WLAN-/Backup-/Update-
-# Vorgaenge mitten drin abbrechen. Deshalb bewusst DREI Faelle statt nur
-# zwei: noch nicht installiert (deployen), gleiche Version (nichts tun -
-# ansonsten wuerde jeder blosse Re-Lauf, auch ohne jede Codeaenderung,
-# staendig neu starten), oder mitgelieferte Version wirklich neuer
-# (deployen) bzw. aeltere installierte Version bereits neuer (nichts tun).
-PORTAL_CODE_UPDATED=0
-if [ ! -e /opt/pi-setup-portal/pi_setup_portal.py ]; then
-    NEED_PORTAL_DEPLOY=1
-elif [ "$INSTALLED_PORTAL_VERSION" = "$BUNDLED_PORTAL_VERSION" ]; then
-    NEED_PORTAL_DEPLOY=0
-elif [ "$(printf '%s\n%s\n' "$INSTALLED_PORTAL_VERSION" "$BUNDLED_PORTAL_VERSION" | sort -V | tail -1)" = "$BUNDLED_PORTAL_VERSION" ]; then
-    NEED_PORTAL_DEPLOY=1
+# installiert ist bzw. wird - siehe apps.d/honigbox.json weiter unten. Das
+# Portal selbst ist ein eigenstaendiges Repo (Chrischn73/setup-portal,
+# siehe Warnhinweis oben) - existiert es noch nicht, wird hier einmalig
+# dessen neuestes Release geladen und installiert. Ist es schon da,
+# aktualisiert es sich seitdem taeglich selbst - dieses Skript fasst es
+# danach nie wieder an.
+mkdir -p /opt/setup-portal/state/honigbox
+if [ ! -e /etc/systemd/system/setup-portal.service ]; then
+    echo "Portal noch nicht installiert - lade neueste Version von Chrischn73/setup-portal..."
+    PORTAL_BOOTSTRAP_TMP="$(mktemp -d)"
+    curl -fL "https://github.com/Chrischn73/setup-portal/archive/refs/heads/main.tar.gz" \
+        -o "$PORTAL_BOOTSTRAP_TMP/portal.tar.gz"
+    tar xzf "$PORTAL_BOOTSTRAP_TMP/portal.tar.gz" -C "$PORTAL_BOOTSTRAP_TMP"
+    PORTAL_BOOTSTRAP_SRC="$(find "$PORTAL_BOOTSTRAP_TMP" -mindepth 1 -maxdepth 1 -type d | head -1)"
+    bash "$PORTAL_BOOTSTRAP_SRC/install.sh"
+    rm -rf "$PORTAL_BOOTSTRAP_TMP"
 else
-    NEED_PORTAL_DEPLOY=0
+    echo "Portal bereits installiert - aktualisiert sich taeglich selbst."
 fi
-if [ "$NEED_PORTAL_DEPLOY" -eq 1 ]; then
-    cp "$SETUP_DIR/pi_setup_portal.py" /opt/pi-setup-portal/pi_setup_portal.py
-    cp "$SETUP_DIR/pi-setup-portal.sh" /opt/pi-setup-portal/pi-setup-portal.sh
-    chmod +x /opt/pi-setup-portal/pi-setup-portal.sh
-    cp "$SETUP_DIR/pi-setup-portal.service" /etc/systemd/system/pi-setup-portal.service
-    PORTAL_CODE_UPDATED=1
-    echo "Portal-Code auf Version $BUNDLED_PORTAL_VERSION aktualisiert (vorher: $INSTALLED_PORTAL_VERSION)."
-else
-    echo "Portal-Code bereits auf Version $INSTALLED_PORTAL_VERSION (mitgeliefert: $BUNDLED_PORTAL_VERSION) - unveraendert gelassen."
-fi
-cp "$SETUP_DIR/regen-issue.sh" /opt/pi-setup-portal/regen-issue.sh
-chmod +x /opt/pi-setup-portal/regen-issue.sh
 
 # Migration: eine von einer frueheren install.sh-Version installierte
 # eigenstaendige HonigBox-Setup-Seite ablösen. Eigene VPN-Screenshots des
 # Nutzers werden dabei mitgenommen statt geloescht.
 if [ -e /etc/systemd/system/honigbox-wifi-setup.service ]; then
-    log "Alte eigenstaendige HonigBox-Setup-Seite ablösen (jetzt gemeinsames Pi-Setup-Portal)"
+    log "Alte eigenstaendige HonigBox-Setup-Seite ablösen (jetzt gemeinsames Setup-Portal)"
     systemctl disable --now honigbox-wifi-setup.service 2>/dev/null || true
     rm -f /etc/systemd/system/honigbox-wifi-setup.service /etc/default/honigbox-wifi-setup
 fi
 if [ -d /opt/honigbox-wifi-setup ]; then
     if [ -d /opt/honigbox-wifi-setup/hilfe-bilder ]; then
-        cp -rn /opt/honigbox-wifi-setup/hilfe-bilder/. /opt/pi-setup-portal/hilfe-bilder/_shared/ 2>/dev/null || true
+        cp -rn /opt/honigbox-wifi-setup/hilfe-bilder/. /opt/setup-portal/hilfe-bilder/_shared/ 2>/dev/null || true
     fi
     # Screenshots sind jetzt migriert - der Rest (altes Portal-Skript,
     # update_check.json usw.) wird nicht mehr gebraucht.
@@ -293,7 +267,7 @@ if [ -n "$PORT8090_PID" ] && [ "$PORT8090_PID" != "$GALERIE_APP_PID" ]; then
     GALERIE_PORT=8091
     echo "Port 8090 ist von einem anderen Prozess belegt (PID $PORT8090_PID) - Galerie laeuft stattdessen auf Port $GALERIE_PORT."
     sed -i "s/^Environment=GALERIE_PORT=.*/Environment=GALERIE_PORT=$GALERIE_PORT/" /etc/systemd/system/honigbox-galerie.service
-    # Eigene Datei nur fuer das Pi-Setup-Portal, damit es den tatsaechlichen
+    # Eigene Datei nur fuer das Setup-Portal, damit es den tatsaechlichen
     # Port kennt, ohne honigbox-galerie.service selbst anfassen zu muessen.
     echo "HONIGBOX_GALERIE_PORT=$GALERIE_PORT" > /etc/default/honigbox-galerie
 else
@@ -301,25 +275,15 @@ else
     rm -f /etc/default/honigbox-galerie
 fi
 
-log "Pruefe Port 80 fuer das gemeinsame Pi-Setup-Portal"
-# Port 80 gehoert jetzt dem gemeinsamen pi-setup-portal.service statt einem
-# HonigBox-eigenen Dienst - dieselbe Pruefung fuehrt die Imker-App in ihrem
-# eigenen install.sh aus, falls sie auf demselben Pi installiert ist/wird.
-SETUP_PID="$(systemctl show -p MainPID --value pi-setup-portal.service 2>/dev/null || echo 0)"
-PORT80_PID="$(ss -H -ltnp "sport = :80" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1 || true)"
-if [ -z "$PORT80_PID" ] || { [ "$PORT80_PID" = "$SETUP_PID" ] && [ "$SETUP_PID" != "0" ]; }; then
-    LANDING_PORT=80
-    echo "Port 80 ist frei (oder bereits durch das Pi-Setup-Portal selbst belegt) - Portal laeuft dort."
-    rm -f /etc/default/pi-setup-portal
-else
-    LANDING_PORT=8082
-    echo "Port 80 ist von einem anderen Prozess belegt (PID $PORT80_PID) - Pi-Setup-Portal laeuft stattdessen auf Port $LANDING_PORT."
-    echo "PI_SETUP_LANDING_PORT=$LANDING_PORT" > /etc/default/pi-setup-portal
-fi
+log "Ermittle Port des Setup-Portals"
+# Die Port-80-Belegungspruefung macht jetzt das Portal-eigene install.sh
+# selbst (siehe Bootstrap oben) - hier nur noch auslesen, welchen Port es
+# sich dabei ausgesucht hat (Standard: 80).
+LANDING_PORT="$(grep -oP '^SETUP_PORTAL_LANDING_PORT=\K[0-9]+' /etc/default/setup-portal 2>/dev/null || echo 80)"
 
 # ---------------------------------------------------------------------------
-log "HonigBox im gemeinsamen Pi-Setup-Portal registrieren"
-cat > /opt/pi-setup-portal/apps.d/honigbox.json << JSONEOF
+log "HonigBox im gemeinsamen Setup-Portal registrieren"
+cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
 {
   "id": "honigbox",
   "label": "HonigBox",
@@ -412,16 +376,9 @@ systemctl enable --now honigbox.service
 systemctl restart honigbox.service
 systemctl enable --now honigbox-galerie.service
 systemctl restart honigbox-galerie.service
-systemctl enable --now pi-setup-portal.service
-# Nur neu starten, wenn oben tatsaechlich neuer Portal-Code deployt wurde -
-# sonst wuerde jeder blosse Re-Lauf von install.sh die von der Imker-App
-# mitgenutzte Setup-Seite unnoetig durchstarten (siehe Kommentar beim
-# Versionsvergleich weiter oben). "enable --now" allein startet den Dienst
-# nur, falls er noch gar nicht laeuft - laesst einen bereits laufenden,
-# unveraenderten Dienst in Ruhe.
-if [ "$PORTAL_CODE_UPDATED" -eq 1 ]; then
-    systemctl restart pi-setup-portal.service
-fi
+# setup-portal.service selbst wird nicht mehr hier verwaltet - das
+# erledigt dessen eigenes install.sh beim Bootstrap oben bzw. der
+# taegliche Selbst-Update-Timer des Portals.
 systemctl enable --now honigbox-backup.timer
 systemctl enable --now honigbox-update-check.timer
 systemctl start honigbox-update-check.service || true
@@ -453,7 +410,7 @@ systemctl --no-pager status honigbox.service | head -5 || true
 echo
 systemctl --no-pager status honigbox-galerie.service | head -5 || true
 echo
-systemctl --no-pager status pi-setup-portal.service | head -5 || true
+systemctl --no-pager status setup-portal.service | head -5 || true
 
 # IP jetzt statt vorher ".local"-Hostname ermitteln - mDNS ist je nach
 # Router/Mesh nicht immer zuverlaessig (siehe Hilfe-Seite), eine IP-Adresse
@@ -501,13 +458,13 @@ if [ "$IS_PI" -eq 1 ]; then
     # ggf. nach einem DHCP-Wechsel veraltete Adresse.
     ISSUE_PORT_SUFFIX=""
     [ "$LANDING_PORT" -ne 80 ] && ISSUE_PORT_SUFFIX=":$LANDING_PORT"
-    cat > /opt/pi-setup-portal/issue.d/00-setup-url.txt << EOF
+    cat > /opt/setup-portal/issue.d/00-setup-url.txt << EOF
    Setup / WLAN:        http://\4$ISSUE_PORT_SUFFIX
 EOF
-    cat > /opt/pi-setup-portal/issue.d/10-honigbox.txt << EOF
+    cat > /opt/setup-portal/issue.d/10-honigbox.txt << EOF
    HonigBox:            http://\4:$GALERIE_PORT
 EOF
-    /opt/pi-setup-portal/regen-issue.sh
+    /opt/setup-portal/regen-issue.sh
 
     echo
     echo "======================================================================"

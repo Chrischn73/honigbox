@@ -5,4 +5,4 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /opt/pi-setup-portal/pi_setup_portal.py --check-update honigbox
+ExecStart=/usr/bin/python3 /opt/setup-portal/setup_portal.py --check-update honigbox

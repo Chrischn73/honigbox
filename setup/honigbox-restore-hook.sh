@@ -1,5 +1,5 @@
 #!/bin/bash
-# Wird vom gemeinsamen Setup-Portal (pi_setup_portal.py, _restore_from_tar)
+# Wird vom gemeinsamen Setup-Portal (setup_portal.py, _restore_from_tar)
 # unmittelbar vor ("pre") bzw. nach ("post") einem Fotos-Backup-Restore
 # aufgerufen - siehe pre_restore_hook/post_restore_hook im HonigBox-Deskriptor
 # (apps.d/honigbox.json, von install.sh geschrieben). Laeuft als root (das
