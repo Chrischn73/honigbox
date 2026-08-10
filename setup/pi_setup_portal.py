@@ -94,7 +94,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
 
-PORTAL_VERSION = "1.6.3"
+PORTAL_VERSION = "1.6.4"
 
 PORTAL_DIR = "/opt/pi-setup-portal"
 # Jede App legt hier per eigenem install.sh genau eine Datei <app-id>.json
@@ -186,6 +186,7 @@ STYLE = """
     --input-bg: #fff; --input-border: #ece3d2;
     --btn-bg: #d98e04; --btn-fg: #fff; --btn-active: #b87503;
     --danger-bg: #c92a2a; --danger-fg: #fff; --danger-active: #a02020;
+    --open-bg: #4caf50; --open-fg: #fff; --open-active: #3d8b40;
   }}
   @media (prefers-color-scheme: dark) {{
     :root {{
@@ -194,6 +195,7 @@ STYLE = """
       --input-bg: #211c15; --input-border: #352d22;
       --btn-bg: #eaa92a; --btn-fg: #1a1a1a; --btn-active: #c9901a;
       --danger-bg: #ff6b6b; --danger-fg: #1a1a1a; --danger-active: #e05555;
+      --open-bg: #66bb6a; --open-fg: #0f1f10; --open-active: #57a05b;
     }}
   }}
   body {{ font-family: sans-serif; max-width: 420px; margin: 2rem auto; padding: 0 1rem;
@@ -210,6 +212,8 @@ STYLE = """
   button:active, .btn:active {{ background: var(--btn-active); }}
   .btn-danger {{ background: var(--danger-bg); color: var(--danger-fg); }}
   .btn-danger:active {{ background: var(--danger-active); }}
+  .btn-open {{ background: var(--open-bg); color: var(--open-fg); }}
+  .btn-open:active {{ background: var(--open-active); }}
   .msg {{ padding: .8rem; border-radius: 6px; margin-bottom: 1rem; background: var(--box-bg); }}
   .err {{ background: var(--msg-err-bg); }}
   .ok  {{ background: var(--msg-ok-bg); }}
@@ -277,14 +281,13 @@ PAGE_LANDING = """<!doctype html>
 <style>""" + STYLE + """</style>
 </head><body>
 {header}
-<h1>{heading}</h1>
 {status}
 {update_banner}
 {app_cards}
 {companion_section}
 {wifi_link}<a class="btn" href="/backup">📦 Backups</a>
 <a class="btn" href="/update">🔄 Update</a>
-<a class="btn" href="/hilfe" style="padding:.5rem; font-size:.85rem;">❓ Hilfe</a>
+<a class="btn" href="/hilfe">❓ Hilfe</a>
 <div class="msg" style="font-size:.9rem;">
 <strong>IP-Adressen:</strong><br>
 {ip_lines}
@@ -2129,7 +2132,7 @@ def render_landing(request_host=None):
         parts = []
         donate_parts = []
         for app in apps:
-            parts.append(f'<a class="btn" href="{app_url(app, request_host)}">{app["emoji"]} '
+            parts.append(f'<a class="btn btn-open" href="{app_url(app, request_host)}">{app["emoji"]} '
                          f'{html.escape(app["label"])} öffnen</a>')
             donate = app.get("donate")
             if donate:
@@ -2171,8 +2174,8 @@ def render_landing(request_host=None):
             f'<p>{comp.get("emoji", "⬇️")} <strong>{html.escape(comp["label"])}</strong> '
             'ist auf diesem Pi noch nicht installiert.</p>'
             f'{beschreibung_block}'
-            f'<button class="btn" style="margin-top:.6rem;" onclick="return startCompanionInstall(\'{app["id"]}\', '
-            f'\'{comp["app_id"]}\', \'{comp["label"]}\')">⬇️ {html.escape(comp["label"])} installieren</button>'
+            f'<button class="btn btn-small" style="margin-top:.6rem;" onclick="return startCompanionInstall(\'{app["id"]}\', '
+            f'\'{comp["app_id"]}\', \'{comp["label"]}\')">⚙️ {html.escape(comp["label"])} installieren</button>'
             '</div>'
         )
     companion_section = "".join(companion_parts)
@@ -2197,7 +2200,6 @@ def render_landing(request_host=None):
     title = _landing_title()
     return PAGE_LANDING.format(
         title=title,
-        heading=title,
         header=render_header(),
         status=status_banner() if IS_PI else "",
         update_banner=update_banner,

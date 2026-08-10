@@ -322,7 +322,7 @@ log "HonigBox im gemeinsamen Pi-Setup-Portal registrieren"
 cat > /opt/pi-setup-portal/apps.d/honigbox.json << JSONEOF
 {
   "id": "honigbox",
-  "label": "BeeTown HonigBox",
+  "label": "HonigBox",
   "emoji": "🍯",
   "beschreibung": "Überwacht die Tür einer Honig-Verkaufsbox per Kontaktschalter, macht bei jeder Öffnung automatisch Fotos und schickt eine Push-Benachrichtigung ans Handy. Läuft direkt auf einem Raspberry Pi in der Box.",
   "app_port_default": 8090,
@@ -505,14 +505,14 @@ if [ "$IS_PI" -eq 1 ]; then
    Setup / WLAN:        http://\4$ISSUE_PORT_SUFFIX
 EOF
     cat > /opt/pi-setup-portal/issue.d/10-honigbox.txt << EOF
-   BeeTown HonigBox:    http://\4:$GALERIE_PORT
+   HonigBox:            http://\4:$GALERIE_PORT
 EOF
     /opt/pi-setup-portal/regen-issue.sh
 
     echo
     echo "======================================================================"
     echo " Setup / WLAN:        $SETUP_URL"
-    echo " BeeTown HonigBox:    $HONIGBOX_URL"
+    echo " HonigBox:            $HONIGBOX_URL"
     echo " WLAN-Einstellungen:  $SETUP_URL/wifi (immer erreichbar)"
     echo " Backups:             $SETUP_URL/backup"
     echo " Update:              $SETUP_URL/update"
@@ -555,7 +555,7 @@ else
     echo
     echo "======================================================================"
     echo " Setup / WLAN:      $SETUP_URL"
-    echo " BeeTown HonigBox:  $HONIGBOX_URL"
+    echo " HonigBox:          $HONIGBOX_URL"
     echo "======================================================================"
     echo " Fertig - kein Neustart erforderlich."
 fi
