@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.2.9';
+const APP_VERSION = 'v1.3.0';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -50,6 +50,8 @@ const statusDienstEl = document.getElementById('status-dienst');
 const statusTuerEl = document.getElementById('status-tuer');
 const kameraFehltWarnungEl = document.getElementById('kamera-fehlt-warnung');
 const btnPushoverStumm = document.getElementById('btn-pushover-stumm');
+const pushoverStummButtonsEl = document.getElementById('pushover-stumm-buttons');
+const pushoverStummDauerBtns = document.querySelectorAll('.pushover-stumm-dauer-btn');
 const STATUS_VERALTET_NACH_SEK = 15;
 const hauptTabBtns = document.querySelectorAll('.haupt-tab-btn');
 const ansichten = document.querySelectorAll('.ansicht');
@@ -224,11 +226,12 @@ function aktualisiereStatusAnzeige(daten) {
 
   const stummRest = daten.pushover_stumm_rest_sekunden || 0;
   if (stummRest > 0) {
-    btnPushoverStumm.dataset.aktiv = '1';
+    btnPushoverStumm.hidden = false;
     btnPushoverStumm.textContent = `🔔 Stummschaltung aufheben (noch ${Math.ceil(stummRest / 60)} Min.)`;
+    pushoverStummButtonsEl.hidden = true;
   } else {
-    btnPushoverStumm.dataset.aktiv = '0';
-    btnPushoverStumm.textContent = '🔕 Pushover 30 Min. stummschalten';
+    btnPushoverStumm.hidden = true;
+    pushoverStummButtonsEl.hidden = false;
   }
 }
 
@@ -901,18 +904,37 @@ async function tuerSimulieren() {
   }
 }
 
-async function pushoverStummSchalten() {
-  const aktuellAktiv = btnPushoverStumm.dataset.aktiv === '1';
-  if (!aktuellAktiv && !await bestaetigen('Pushover-Benachrichtigungen für 30 Minuten stummschalten?')) return;
+async function pushoverStummStarten(minuten) {
+  pushoverStummDauerBtns.forEach((b) => { b.disabled = true; });
+  try {
+    const res = await fetch('/api/pushover/stumm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aktiv: true, dauer_minuten: minuten }),
+    });
+    if (res.ok) {
+      toast(`Pushover für ${minuten} Minuten stummgeschaltet`);
+      ladeStatus();
+    } else {
+      toast('Fehler beim Stummschalten');
+    }
+  } catch {
+    toast('Fehler beim Stummschalten');
+  } finally {
+    pushoverStummDauerBtns.forEach((b) => { b.disabled = false; });
+  }
+}
+
+async function pushoverStummAufheben() {
   btnPushoverStumm.disabled = true;
   try {
     const res = await fetch('/api/pushover/stumm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aktiv: !aktuellAktiv }),
+      body: JSON.stringify({ aktiv: false }),
     });
     if (res.ok) {
-      toast(aktuellAktiv ? 'Stummschaltung aufgehoben' : 'Pushover für 30 Minuten stummgeschaltet');
+      toast('Stummschaltung aufgehoben');
       ladeStatus();
     } else {
       toast('Fehler beim Umschalten');
@@ -1182,7 +1204,10 @@ btnHerunterfahren.addEventListener('click', herunterfahren);
 btnDiensteNeustart.addEventListener('click', diensteNeustart);
 tuerKontaktSpeichernBtn.addEventListener('click', speichereTuerEinstellungen);
 btnTuerSimulieren.addEventListener('click', tuerSimulieren);
-btnPushoverStumm.addEventListener('click', pushoverStummSchalten);
+btnPushoverStumm.addEventListener('click', pushoverStummAufheben);
+pushoverStummDauerBtns.forEach((btn) => {
+  btn.addEventListener('click', () => pushoverStummStarten(parseInt(btn.dataset.minuten, 10)));
+});
 fotoZeitplanSpeichernBtn.addEventListener('click', speichereFotoZeitplan);
 fotoZeitplanZuruecksetzenBtn.addEventListener('click', fotoZeitplanZuruecksetzen);
 pushoverSpeichernBtn.addEventListener('click', speicherePushoverEinstellungen);

@@ -78,6 +78,25 @@ def test_tuer_kontakt_invertiert_rundtrip(server):
     assert data["kontakt_invertiert"] is True, "Einstellung wurde nicht dauerhaft gespeichert"
 
 
+def test_pushover_stumm_mit_gueltiger_dauer(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 10})
+    assert status == 200
+    assert 595 <= data["rest_sekunden"] <= 600
+
+    status, data = post(base_url, "/api/pushover/stumm", {"aktiv": False})
+    assert data["rest_sekunden"] == 0
+
+
+def test_pushover_stumm_mit_unzulaessiger_dauer_faellt_auf_standard_zurueck(server):
+    """Regressionstest: Standard-Dauer wurde 2026-08-10 auf 5 Minuten
+    festgelegt (vorher 30) - siehe PUSHOVER_STUMM_DAUER_STANDARD_MIN."""
+    base_url, _ = server
+    status, data = post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 7})
+    assert status == 200
+    assert 295 <= data["rest_sekunden"] <= 300
+
+
 def test_speicher_einstellungen_ram_ist_standard(server):
     base_url, _ = server
     status, data = get(base_url, "/api/speicher")

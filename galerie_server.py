@@ -218,7 +218,8 @@ SIMULATION_DAUER_STANDARD_SEK = 120
 SIMULATION_DAUER_MAX_SEK = 1800
 
 PUSHOVER_STUMM_PATH = os.path.join(EINSTELLUNGEN_DIR, ".pushover-stumm-bis.json")
-PUSHOVER_STUMM_DAUER_SEK = 1800
+PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [3, 5, 10, 20, 30]
+PUSHOVER_STUMM_DAUER_STANDARD_MIN = 5
 
 # Privilegiertes Script fuer den RAM/Platte-Wechsel (siehe speicher_status()/
 # speichere_speicher_einstellungen() weiter unten) - laeuft als root ueber
@@ -603,10 +604,16 @@ def pushover_stumm_rest_sekunden():
     return max(0, round(bis - time.time()))
 
 
-def setze_pushover_stumm(aktiv):
+def setze_pushover_stumm(aktiv, dauer_minuten=None):
     if aktiv:
+        try:
+            dauer_minuten = int(dauer_minuten)
+        except (TypeError, ValueError):
+            dauer_minuten = PUSHOVER_STUMM_DAUER_STANDARD_MIN
+        if dauer_minuten not in PUSHOVER_STUMM_DAUER_OPTIONEN_MIN:
+            dauer_minuten = PUSHOVER_STUMM_DAUER_STANDARD_MIN
         with open(PUSHOVER_STUMM_PATH, "w") as f:
-            json.dump({"bis": time.time() + PUSHOVER_STUMM_DAUER_SEK}, f)
+            json.dump({"bis": time.time() + dauer_minuten * 60}, f)
     else:
         try:
             os.remove(PUSHOVER_STUMM_PATH)
@@ -1145,7 +1152,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/pushover/stumm":
             body = self._rjson()
-            setze_pushover_stumm(bool(body.get("aktiv")))
+            setze_pushover_stumm(bool(body.get("aktiv")), body.get("dauer_minuten"))
             return self._json({"ok": True, "rest_sekunden": pushover_stumm_rest_sekunden()})
 
         if path == "/api/system/neustart":

@@ -27,7 +27,15 @@
   </div>
   <p class="warnhinweis" id="kamera-fehlt-warnung" hidden>⚠️ Keine Kamera erkannt – bitte Anschluss prüfen (siehe „❓ Hilfe“ in den Einstellungen).</p>
 
-  <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm" style="margin:0 1rem .8rem">🔕 Pushover 30 Min. stummschalten</button>
+  <div class="pushover-stumm-leiste" id="pushover-stumm-buttons">
+    <span class="pushover-stumm-label">🔕 Stummschalten:</span>
+    <button class="btn btn-sm btn-ghost pushover-stumm-dauer-btn" data-minuten="3">3 Min.</button>
+    <button class="btn btn-sm btn-ghost pushover-stumm-dauer-btn" data-minuten="5">5 Min.</button>
+    <button class="btn btn-sm btn-ghost pushover-stumm-dauer-btn" data-minuten="10">10 Min.</button>
+    <button class="btn btn-sm btn-ghost pushover-stumm-dauer-btn" data-minuten="20">20 Min.</button>
+    <button class="btn btn-sm btn-ghost pushover-stumm-dauer-btn" data-minuten="30">30 Min.</button>
+  </div>
+  <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm" hidden></button>
 
   <nav class="haupt-tabs">
     <button class="haupt-tab-btn" id="haupt-tab-fotos" data-ansicht="fotos">📷 Aufnahmen</button>

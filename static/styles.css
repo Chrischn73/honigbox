@@ -211,4 +211,8 @@ body{
 .warnhinweis{background:var(--surface); border:1px solid var(--danger-soft-line); color:var(--ink-soft);
   border-radius:8px; padding:.6rem .8rem; font-size:.82rem; margin-bottom:.8rem}
 
+.pushover-stumm-leiste{display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin:0 1rem .8rem}
+.pushover-stumm-label{font-size:.82rem; color:var(--ink-soft)}
+#btn-pushover-stumm{margin:0 1rem .8rem}
+
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
