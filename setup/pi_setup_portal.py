@@ -94,7 +94,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
 
-PORTAL_VERSION = "1.6.0"
+PORTAL_VERSION = "1.6.1"
 
 PORTAL_DIR = "/opt/pi-setup-portal"
 # Jede App legt hier per eigenem install.sh genau eine Datei <app-id>.json
@@ -933,19 +933,16 @@ def app_url(app, request_host=None):
 
 
 def _apps_heading():
-    """(Emoji-Praefix, Titel-Text) fuer Header/Landing-Titel - je nach
-    Anzahl registrierter Apps (0/1/mehrere), IS_PI-abhaengige Formulierung
-    wie in den beiden Vorlagen-Projekten (z. B. 'HonigBox-Pi')."""
-    apps = load_apps()
-    if not apps:
-        return "", "Pi-Setup"
-    if len(apps) == 1:
-        short = apps[0]["label"].split()[0]
-        suffix = "-Pi" if IS_PI else "-Setup"
-        return apps[0]["emoji"], f"{short}{suffix}"
-    emojis = "".join(a["emoji"] for a in apps)
-    suffix = "Pi-Setup" if IS_PI else "Setup"
-    return emojis, suffix
+    """(Emoji-Praefix, Titel-Text) fuer Header/Landing-Titel. Nutzerwunsch
+    2026-08-10: fest auf "BeeTown-Setup-Portal" statt frueher dynamisch aus
+    Anzahl registrierter Apps/IS_PI abgeleitet (z.B. "BeeTown-Pi" vs.
+    "BeeTown-Setup" je nach Geraet) - verwirrte mehr, als es half, sobald
+    HonigBox und die Imkerei-App (beide unter der Marke "BeeTown") auf
+    unterschiedlichen Geraeten liefen. Einzige Konstante hier bewusst NICHT
+    ueber apps.d/*.json konfigurierbar (anders als donate/companion/
+    beschreibung) - der Nutzer hat nur genau diese beiden BeeTown-Apps,
+    ein generischer Mechanismus wuerde hier keinen echten Zweck erfuellen."""
+    return "🐝", "BeeTown-Setup-Portal"
 
 
 def render_header():
