@@ -61,6 +61,23 @@ def test_pushover_eskalation_texte_nennen_vier_und_34_minuten(server):
     assert "34 Minuten" in data["werte"]["meldungen"]["eskalation2"]["text"]
 
 
+def test_tuer_kontakt_invertiert_standard_aus(server):
+    base_url, _ = server
+    status, data = get(base_url, "/api/tuer-einstellungen")
+    assert status == 200
+    assert data["kontakt_invertiert"] is False
+
+
+def test_tuer_kontakt_invertiert_rundtrip(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/tuer-einstellungen", {"kontakt_invertiert": True})
+    assert status == 200
+    assert data["kontakt_invertiert"] is True
+
+    status, data = get(base_url, "/api/tuer-einstellungen")
+    assert data["kontakt_invertiert"] is True, "Einstellung wurde nicht dauerhaft gespeichert"
+
+
 def test_speicher_einstellungen_ram_ist_standard(server):
     base_url, _ = server
     status, data = get(base_url, "/api/speicher")

@@ -208,6 +208,15 @@
       <details class="kamera-details system-details">
         <summary>⚡ System</summary>
         <p class="warnhinweis" id="ram-neustart-warnung" hidden>⚠️ Fotos liegen aktuell im RAM-Speicher (Einstellung unter „📷 Fotos“ → „Speicherort“) – bei Neustart/Herunterfahren gehen alle noch nicht archivierten Fotos dabei verloren.</p>
+
+        <div class="kamera-feld checkbox-feld">
+          <label for="tuer-kontakt-invertiert">Türkontakt umdrehen</label>
+          <input type="checkbox" id="tuer-kontakt-invertiert">
+        </div>
+        <p class="muted" style="font-size:.8rem; margin:.2rem 0 .8rem;">Nur falls der Schalter versehentlich als
+        Öffner statt Schließer angeschlossen wurde und die Tür-Anzeige deshalb dauerhaft verkehrt steht.</p>
+        <button class="btn btn-sm btn-ghost" id="tuer-kontakt-speichern" style="margin-bottom:1.2rem;">Speichern</button>
+
         <div class="kamera-aktionen">
           <button class="btn btn-sm btn-ghost" id="btn-dienste-neustart">🔁 Dienste neu starten</button>
           <button class="btn btn-sm btn-danger" id="btn-neustart">🔄 Pi neu starten</button>

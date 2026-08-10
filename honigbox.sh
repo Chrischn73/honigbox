@@ -36,8 +36,11 @@ os.chmod(EINSTELLUNGEN_DIR, 0o777)
 SWITCH_PIN = 17  # BCM-Nummerierung
 
 # Schalter zwischen GPIO17 und GND, interner Pull-Up.
-# Kontakt geschlossen (is_pressed=True)  -> Tuer offen
-# Kontakt offen      (is_pressed=False) -> Tuer zu
+# Standard-Verdrahtung: Kontakt geschlossen (is_pressed=True) -> Tuer offen,
+# Kontakt offen (is_pressed=False) -> Tuer zu. Ueber die Web-UI-Einstellung
+# "Türkontakt umdrehen" laesst sich das umkehren, falls jemand den Schalter
+# versehentlich als Oeffner statt Schliesser angeschlossen hat - siehe
+# kontakt_invertiert()/door_is_open() weiter unten.
 door_switch = Button(SWITCH_PIN, pull_up=True, bounce_time=0.2)
 
 WAIT_CONFIRM = 1        # Sek. bis Bestaetigungsmessung nach erster Erkennung
@@ -57,6 +60,9 @@ FOTO_ZEITPLAN_STANDARD = {
 STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".status.json")
 TUER_SIMULATION_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-simulation-bis.json")
 TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-signal")
+# Pfad muss identisch mit TUER_EINSTELLUNGEN_PATH in galerie_server.py sein
+# (von dort per Web-UI geschrieben, siehe /api/tuer-einstellungen).
+TUER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-einstellungen.json")
 
 
 def schreibe_status(offen, offen_seit):
@@ -95,9 +101,25 @@ def simulation_aktiv():
 _tuer_offen_seit = None  # Unix-Zeitstempel, seit dem die Tuer ununterbrochen offen ist (None = zu)
 
 
+def kontakt_invertiert():
+    """True, falls der Schalter laut Web-UI-Einstellung ("Türkontakt
+    umdrehen") versehentlich als Oeffner statt Schliesser angeschlossen ist -
+    siehe /api/tuer-einstellungen in galerie_server.py. Faellt auf False
+    zurueck (Standard-Verdrahtung: Kontakt geschlossen = Tuer offen), wenn die
+    Einstellungsdatei fehlt oder kaputt ist."""
+    try:
+        with open(TUER_EINSTELLUNGEN_PATH) as f:
+            return bool(json.load(f).get("kontakt_invertiert", False))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return False
+
+
 def door_is_open():
     global _tuer_offen_seit
-    offen = simulation_aktiv() or door_switch.is_pressed
+    kontakt_bedeutet_offen = door_switch.is_pressed
+    if kontakt_invertiert():
+        kontakt_bedeutet_offen = not kontakt_bedeutet_offen
+    offen = simulation_aktiv() or kontakt_bedeutet_offen
     if offen:
         if _tuer_offen_seit is None:
             _tuer_offen_seit = time.time()

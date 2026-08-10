@@ -205,6 +205,12 @@ ALTE_PUSHOVER_CONF_PATH = os.path.join(BASE, "pushover.conf")
 STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".status.json")
 TUER_SIMULATION_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-simulation-bis.json")
 TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-signal")
+# Von honigbox.sh gelesen (Pfad muss dort identisch hartcodiert sein) - siehe
+# door_is_open() dort. Steuert, ob der GPIO17-Kontakt normal oder invertiert
+# ausgewertet wird, falls der Schalter versehentlich als Oeffner statt
+# Schliesser angeschlossen wurde.
+TUER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-einstellungen.json")
+TUER_EINSTELLUNGEN_STANDARD = {"kontakt_invertiert": False}
 
 SPEICHER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".speicher-einstellungen.json")
 SIMULATION_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".simulation-einstellungen.json")
@@ -664,6 +670,17 @@ def empfohlene_ram_groesse_mb():
     return int(max(64, min(512, gesamt * SPEICHER_GROESSE_EMPFEHLUNG_ANTEIL)))
 
 
+def lade_tuer_einstellungen():
+    return _lade_einstellungen_datei(TUER_EINSTELLUNGEN_PATH, TUER_EINSTELLUNGEN_STANDARD)
+
+
+def speichere_tuer_einstellungen(kontakt_invertiert):
+    werte = {"kontakt_invertiert": bool(kontakt_invertiert)}
+    with open(TUER_EINSTELLUNGEN_PATH, "w") as f:
+        json.dump(werte, f)
+    return werte
+
+
 def lade_speicher_einstellungen():
     standard = {"speicherort": "ram", "ram_groesse_mb": empfohlene_ram_groesse_mb()}
     return _lade_einstellungen_datei(SPEICHER_EINSTELLUNGEN_PATH, standard)
@@ -997,6 +1014,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(antwort)
         if path == "/api/simulation":
             return self._json({"dauer_sekunden": lade_simulation_dauer(), "max_sekunden": SIMULATION_DAUER_MAX_SEK})
+        if path == "/api/tuer-einstellungen":
+            return self._json(lade_tuer_einstellungen())
         if path == "/api/speicher":
             return self._json(speicher_status())
         if path == "/api/kamera":
@@ -1071,6 +1090,11 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._err(400, str(e))
             return self._json({"ok": True, "dauer_sekunden": gesamt})
+
+        if path == "/api/tuer-einstellungen":
+            body = self._rjson()
+            werte = speichere_tuer_einstellungen(body.get("kontakt_invertiert", False))
+            return self._json({"ok": True, **werte})
 
         if path == "/api/speicher":
             body = self._rjson()

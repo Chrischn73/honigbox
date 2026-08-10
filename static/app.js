@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.2.7';
+const APP_VERSION = 'v1.2.8';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -21,6 +21,8 @@ const kameraZuruecksetzenBtn = document.getElementById('kamera-zuruecksetzen');
 const btnNeustart = document.getElementById('btn-neustart');
 const btnHerunterfahren = document.getElementById('btn-herunterfahren');
 const btnDiensteNeustart = document.getElementById('btn-dienste-neustart');
+const tuerKontaktInvertiertCb = document.getElementById('tuer-kontakt-invertiert');
+const tuerKontaktSpeichernBtn = document.getElementById('tuer-kontakt-speichern');
 const btnTuerSimulieren = document.getElementById('btn-tuer-simulieren');
 const simMinutenInp = document.getElementById('sim-minuten');
 const simSekundenInp = document.getElementById('sim-sekunden');
@@ -257,18 +259,70 @@ function zeigeAnsicht(name) {
   hauptTabBtns.forEach((btn) => btn.classList.toggle('aktiv', btn.dataset.ansicht === name));
 }
 
-function oeffneLightbox(url, name) {
+// Von render() bei jedem Laden aktuell gehalten - die Lightbox braucht die
+// volle Liste (nicht nur das angeklickte Bild), um zum naechsten/vorherigen
+// Foto blaettern zu koennen.
+let aktuelleBilderListe = [];
+
+function oeffneLightbox(startIndex) {
+  let index = startIndex;
   const back = document.createElement('div');
   back.className = 'lightbox';
+
   const figure = document.createElement('figure');
   const img = document.createElement('img');
-  img.src = url;
   const caption = document.createElement('figcaption');
-  caption.textContent = name;
   figure.append(img, caption);
-  back.appendChild(figure);
-  back.addEventListener('click', () => back.remove());
+
+  const mehrereBilder = aktuelleBilderListe.length > 1;
+  let prevBtn = null;
+  let nextBtn = null;
+
+  function zeigeIndex(i) {
+    index = i;
+    const datei = aktuelleBilderListe[index];
+    img.src = bildUrl(datei);
+    caption.textContent = datei;
+    if (mehrereBilder) {
+      prevBtn.disabled = index <= 0;
+      nextBtn.disabled = index >= aktuelleBilderListe.length - 1;
+    }
+  }
+
+  function schliessen() {
+    back.remove();
+    document.removeEventListener('keydown', tastenHandler);
+  }
+
+  function tastenHandler(e) {
+    if (e.key === 'Escape') schliessen();
+    else if (e.key === 'ArrowLeft' && index > 0) zeigeIndex(index - 1);
+    else if (e.key === 'ArrowRight' && index < aktuelleBilderListe.length - 1) zeigeIndex(index + 1);
+  }
+  document.addEventListener('keydown', tastenHandler);
+
+  back.append(figure);
+  if (mehrereBilder) {
+    // Als Overlay UEBER dem Bild (position:absolute in CSS) - nimmt dem Bild
+    // dadurch keinen eigenen Platz weg, es bleibt auf dem Handy genauso gross
+    // wie ohne Navigation.
+    prevBtn = document.createElement('button');
+    prevBtn.className = 'lightbox-nav lightbox-nav-prev';
+    prevBtn.setAttribute('aria-label', 'Vorheriges Bild');
+    prevBtn.textContent = '‹';
+    prevBtn.addEventListener('click', (e) => { e.stopPropagation(); if (index > 0) zeigeIndex(index - 1); });
+
+    nextBtn = document.createElement('button');
+    nextBtn.className = 'lightbox-nav lightbox-nav-next';
+    nextBtn.setAttribute('aria-label', 'Nächstes Bild');
+    nextBtn.textContent = '›';
+    nextBtn.addEventListener('click', (e) => { e.stopPropagation(); if (index < aktuelleBilderListe.length - 1) zeigeIndex(index + 1); });
+
+    back.append(prevBtn, nextBtn);
+  }
+  back.addEventListener('click', schliessen);
   document.body.appendChild(back);
+  zeigeIndex(index);
 }
 
 function aktualisiereAuswahlLeiste() {
@@ -494,6 +548,38 @@ function aktualisiereSpeicherFeldSichtbarkeit() {
 
 function aktualisiereRamNeustartWarnung() {
   ramNeustartWarnungEl.hidden = !speicherLiegtAufRam;
+}
+
+async function ladeTuerEinstellungen() {
+  try {
+    const res = await fetch('/api/tuer-einstellungen');
+    const data = await res.json();
+    tuerKontaktInvertiertCb.checked = !!data.kontakt_invertiert;
+  } catch {
+    // Kein Toast hier - eine leere/nicht ladbare Checkbox bei diesem selten
+    // genutzten Feld faellt kaum auf, ein Fehler-Toast gleich beim Laden der
+    // Seite waere unverhaeltnismaessig aufdringlich.
+  }
+}
+
+async function speichereTuerEinstellungen() {
+  tuerKontaktSpeichernBtn.disabled = true;
+  try {
+    const res = await fetch('/api/tuer-einstellungen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kontakt_invertiert: tuerKontaktInvertiertCb.checked }),
+    });
+    if (res.ok) {
+      toast('Gespeichert');
+    } else {
+      toast('Fehler beim Speichern');
+    }
+  } catch {
+    toast('Fehler beim Speichern');
+  } finally {
+    tuerKontaktSpeichernBtn.disabled = false;
+  }
 }
 
 async function ladeSpeicherEinstellungen() {
@@ -799,6 +885,7 @@ async function batchLoeschen() {
 
 function render(bilder) {
   grid.innerHTML = '';
+  aktuelleBilderListe = bilder;
 
   if (bilder.length === 0) {
     const empty = document.createElement('div');
@@ -812,8 +899,7 @@ function render(bilder) {
   const liste = document.createElement('ul');
   liste.className = 'card-list';
 
-  bilder.forEach((datei) => {
-    const url = bildUrl(datei);
+  bilder.forEach((datei, index) => {
     const vorschauUrl = thumbUrl(datei);
     const li = document.createElement('li');
     li.className = 'card';
@@ -842,7 +928,7 @@ function render(bilder) {
     img.src = vorschauUrl;
     img.alt = datei;
     img.loading = 'lazy';
-    img.addEventListener('click', () => oeffneLightbox(url, datei));
+    img.addEventListener('click', () => oeffneLightbox(index));
 
     thumbWrap.append(checkboxZone, img);
 
@@ -1032,6 +1118,7 @@ kameraZuruecksetzenBtn.addEventListener('click', kameraZuruecksetzen);
 btnNeustart.addEventListener('click', neustart);
 btnHerunterfahren.addEventListener('click', herunterfahren);
 btnDiensteNeustart.addEventListener('click', diensteNeustart);
+tuerKontaktSpeichernBtn.addEventListener('click', speichereTuerEinstellungen);
 btnTuerSimulieren.addEventListener('click', tuerSimulieren);
 btnPushoverStumm.addEventListener('click', pushoverStummSchalten);
 fotoZeitplanSpeichernBtn.addEventListener('click', speichereFotoZeitplan);
@@ -1070,6 +1157,7 @@ ladeKameraEinstellungen();
 ladeFotoZeitplan();
 ladePushoverEinstellungen();
 ladeSimulationDauer();
+ladeTuerEinstellungen();
 ladeSpeicherEinstellungen();
 laden();
 ladeStatus();

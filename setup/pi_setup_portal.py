@@ -94,7 +94,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
 
-PORTAL_VERSION = "1.4.0"
+PORTAL_VERSION = "1.5.0"
 
 PORTAL_DIR = "/opt/pi-setup-portal"
 # Jede App legt hier per eigenem install.sh genau eine Datei <app-id>.json
@@ -378,6 +378,7 @@ PAGE_HILFE = """<!doctype html>
 </head><body>
 {header}
 <h1>❓ Hilfe</h1>
+{app_beschreibungen}
 <a class="btn" href="/tipps">📱 Handy-Tipps</a>
 <p class="muted" style="font-size:.85rem; margin-top:.4rem;">Die App sieht dann aus wie eine echte App und wird
 nicht direkt im Browser geöffnet.</p>
@@ -826,9 +827,11 @@ setTimeout(function() {
 # ohne sie trotzdem vollstaendig gueltig ist):
 #   "donate": {"text", "url", "button_label"} - Spenden-Hinweis auf der Startseite.
 #   "companion": {"app_id", "label", "github_repo"} + optional "emoji",
-#     "install_script_path" (Default "setup/install.sh") - Partner-App, die
-#     sich per Button dieser App aus nachinstallieren laesst (siehe
-#     render_landing()/_run_companion_install_in_background()).
+#     "install_script_path" (Default "setup/install.sh"), "beschreibung" -
+#     Partner-App, die sich per Button dieser App aus nachinstallieren laesst
+#     (siehe render_landing()/_run_companion_install_in_background()).
+#   "beschreibung": kurzer Text, was die App macht - erscheint auf /hilfe
+#     (siehe render_app_beschreibungen()).
 _REQUIRED_TOP_LEVEL_FIELDS = (
     "id", "label", "emoji", "app_port_default", "app_port_env_file", "app_port_env_var",
     "backup", "update",
@@ -949,6 +952,29 @@ def render_header():
     return f'<div class="header"><span class="logo">{emoji or "🐝"}</span><div class="name">{html.escape(text)}</div></div>'
 
 
+def render_app_beschreibungen():
+    """Kurzbeschreibung jeder installierten App mit optionalem "beschreibung"-
+    Feld im Descriptor - rein deklarativ, dieses Skript kennt auch hier keine
+    App-Namen. Leerer String, falls keine App eine Beschreibung mitbringt
+    (z. B. noch komplett frische Portal-Installation ohne registrierte App)."""
+    parts = []
+    for app in load_apps():
+        beschreibung = app.get("beschreibung")
+        if not beschreibung:
+            continue
+        parts.append(
+            '<div class="msg" style="margin-bottom:.8rem;">'
+            f'<p><strong>{app.get("emoji", "")} {html.escape(app["label"])}</strong></p>'
+            f'<p style="margin-top:.3rem;">{html.escape(beschreibung)}</p>'
+            '</div>'
+        )
+    return "".join(parts)
+
+
+def render_hilfe():
+    return PAGE_HILFE.format(header=render_header(), app_beschreibungen=render_app_beschreibungen())
+
+
 def _landing_title():
     emoji, text = _apps_heading()
     return f"{emoji} {text}" if emoji else text
@@ -1061,7 +1087,18 @@ def previously_active_connection():
 def connect_wifi(ssid, password):
     previous = previously_active_connection()
     if previous == ssid:
-        previous = None  # Verbindung zum gleichen Netz - kein Rueckfall noetig
+        # Bug (2026-08-10): war hier vorher nur "previous = None" (kein
+        # Rueckfall-Netz noetig) - das eigentliche "nmcli connection delete"
+        # weiter unten lief aber TROTZDEM, und loeschte damit das GERADE
+        # AKTIVE Verbindungsprofil. Das trennt die bestehende Verbindung
+        # sofort, noch bevor "nmcli device wifi connect" ueberhaupt versucht
+        # wird - schlaegt dieser Versuch dann fehl (z.B. weil das Formular
+        # kein Passwort mitschickt, man ist ja "schon verbunden" und tippt es
+        # nicht erneut ein), gibt es wegen des genullten "previous" auch
+        # keinen Rueckfall mehr. Ergebnis: aus dem WLAN geflogen, nur noch per
+        # Kabel wieder erreichbar. Fix: bei bereits aktiver Verbindung zum
+        # SELBEN Netz gar nichts tun - insbesondere NICHT das Profil loeschen.
+        return True, f"Bereits mit '{ssid}' verbunden."
 
     subprocess.run(["nmcli", "connection", "delete", ssid], capture_output=True, text=True)
 
@@ -2114,11 +2151,16 @@ def render_landing(request_host=None):
         comp = app.get("companion")
         if not comp or comp["app_id"] in installed_ids:
             continue
+        beschreibung_block = (
+            f'<p class="muted" style="font-size:.85rem; margin:.4rem 0 0;">{html.escape(comp["beschreibung"])}</p>'
+            if comp.get("beschreibung") else ""
+        )
         companion_parts.append(
             '<div class="msg" style="text-align:center;">'
             f'<p>{comp.get("emoji", "⬇️")} <strong>{html.escape(comp["label"])}</strong> '
             'ist auf diesem Pi noch nicht installiert.</p>'
-            f'<button class="btn" onclick="return startCompanionInstall(\'{app["id"]}\', '
+            f'{beschreibung_block}'
+            f'<button class="btn" style="margin-top:.6rem;" onclick="return startCompanionInstall(\'{app["id"]}\', '
             f'\'{comp["app_id"]}\', \'{comp["label"]}\')">⬇️ {html.escape(comp["label"])} installieren</button>'
             '</div>'
         )
@@ -2266,7 +2308,7 @@ class BaseHandler(BaseHTTPRequestHandler):
             self._send_html(PAGE_TIPPS.format(header=render_header()))
             return
         if path == "/hilfe":
-            self._send_html(PAGE_HILFE.format(header=render_header()))
+            self._send_html(render_hilfe())
             return
         if path == "/hilfe/vpn":
             self._send_html(PAGE_VPN.format(
