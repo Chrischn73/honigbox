@@ -94,7 +94,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote
 
-PORTAL_VERSION = "1.6.1"
+PORTAL_VERSION = "1.6.2"
 
 PORTAL_DIR = "/opt/pi-setup-portal"
 # Jede App legt hier per eigenem install.sh genau eine Datei <app-id>.json
@@ -290,6 +290,7 @@ PAGE_LANDING = """<!doctype html>
 {ip_lines}
 </div>
 {system_buttons}
+{donate_section}
 
 <div id="companion-install-modal" class="modal-backdrop">
   <div class="modal-box" id="companion-install-modal-content"></div>
@@ -2123,14 +2124,23 @@ def render_landing(request_host=None):
 
     if not apps:
         app_cards = '<p class="muted" style="text-align:center;">Keine Anwendung registriert.</p>'
+        donate_section = ""
     else:
         parts = []
+        donate_parts = []
         for app in apps:
             parts.append(f'<a class="btn" href="{app_url(app, request_host)}">{app["emoji"]} '
                          f'{html.escape(app["label"])} öffnen</a>')
             donate = app.get("donate")
             if donate:
-                parts.append(
+                # Bewusst NICHT direkt hier bei den Oeffnen-Buttons, sondern
+                # gesammelt ganz unten auf der Seite (siehe donate_section in
+                # PAGE_LANDING) - sonst haette die Position/Reihenfolge der
+                # Seite je nachdem, welche App gerade registriert ist bzw.
+                # ob sie ueberhaupt ein "donate"-Feld deklariert, unterschied-
+                # lich ausgesehen (Nutzer-Verwirrung 2026-08-10: "wieso
+                # unterscheiden sich die Portale").
+                donate_parts.append(
                     '<div class="donate-box">'
                     f'<p>{html.escape(donate["text"])}</p>'
                     f'<a class="btn" href="{donate["url"]}" target="_blank" rel="noopener">'
@@ -2138,6 +2148,7 @@ def render_landing(request_host=None):
                     '</div>'
                 )
         app_cards = "".join(parts)
+        donate_section = "".join(donate_parts)
 
     # Fuer jede installierte App mit "companion"-Feld, deren Partner-App
     # NOCH NICHT registriert ist (kein eigener apps.d/-Eintrag) - Button
@@ -2195,6 +2206,7 @@ def render_landing(request_host=None):
         wifi_link='<a class="btn" href="/wifi">📶 WLAN-Einstellungen</a>\n' if IS_PI else "",
         ip_lines=ip_lines,
         system_buttons=SYSTEM_BUTTONS if IS_PI else "",
+        donate_section=donate_section,
     )
 
 
