@@ -200,8 +200,22 @@ mkdir -p /opt/setup-portal/state/honigbox
 if [ ! -e /etc/systemd/system/setup-portal.service ]; then
     echo "Portal noch nicht installiert - lade neueste Version von Chrischn73/setup-portal..."
     PORTAL_BOOTSTRAP_TMP="$(mktemp -d)"
-    curl -fL "https://github.com/Chrischn73/setup-portal/archive/refs/heads/main.tar.gz" \
-        -o "$PORTAL_BOOTSTRAP_TMP/portal.tar.gz"
+    # Mit Wiederholung: DNS/Netzwerk ist kurz nach dem WLAN-Umbau oben
+    # (NetworkManager-Neustart) manchmal noch nicht wieder stabil - ist uns
+    # schon einmal so passiert ("Could not resolve host: github.com"),
+    # obwohl die Internetpruefung ganz oben im Skript da schon lange
+    # erfolgreich war.
+    portal_dl_tries=0
+    until curl -fL "https://github.com/Chrischn73/setup-portal/archive/refs/heads/main.tar.gz" \
+        -o "$PORTAL_BOOTSTRAP_TMP/portal.tar.gz"; do
+        portal_dl_tries=$((portal_dl_tries + 1))
+        if [ "$portal_dl_tries" -ge 5 ]; then
+            echo "FEHLER: Konnte das Setup-Portal auch nach $portal_dl_tries Versuchen nicht von GitHub laden."
+            exit 1
+        fi
+        echo "Download fehlgeschlagen (Versuch $portal_dl_tries) - erneuter Versuch in 10 Sekunden..."
+        sleep 10
+    done
     tar xzf "$PORTAL_BOOTSTRAP_TMP/portal.tar.gz" -C "$PORTAL_BOOTSTRAP_TMP"
     PORTAL_BOOTSTRAP_SRC="$(find "$PORTAL_BOOTSTRAP_TMP" -mindepth 1 -maxdepth 1 -type d | head -1)"
     bash "$PORTAL_BOOTSTRAP_SRC/install.sh"
