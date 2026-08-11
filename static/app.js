@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.8';
+const APP_VERSION = 'v1.3.9';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -523,6 +523,14 @@ function oeffneFotoFeed(startIndex) {
     if (naechsterIndex >= dateien.length) {
       beobachter.disconnect();
       sentinel.remove();
+    } else {
+      // appendChild auf einen bereits vorhandenen Knoten VERSCHIEBT ihn - so
+      // landet der Sentinel nach jeder Batch wieder ganz unten, hinter den
+      // gerade neu geladenen Fotos. Stuende er (wie vorher) dauerhaft ganz
+      // oben, waere er schon beim Oeffnen sichtbar/ueberlappend und wuerde nach
+      // dem einmaligen initialen Ausloesen nie wieder neu in den Viewport
+      // scrollen - genau das Nachlade-Problem beim Runterscrollen.
+      liste.appendChild(sentinel);
     }
   }
 
@@ -531,10 +539,9 @@ function oeffneFotoFeed(startIndex) {
   });
 
   back.append(schliessenBtn, liste);
-  liste.appendChild(sentinel);
   document.body.appendChild(back);
   naechsteBatchLaden();
-  beobachter.observe(sentinel);
+  if (sentinel.isConnected) beobachter.observe(sentinel);
 }
 
 async function ladeGalerieAnzeigeModus() {
