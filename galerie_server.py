@@ -212,7 +212,7 @@ TELEGRAM_SHELL_CONF_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-einstellun
 TELEGRAM_CHATS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-chats.json")
 TELEGRAM_PENDING_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-pending-codes.json")
 TELEGRAM_OFFSET_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-update-offset")
-TELEGRAM_STANDARD = {"bot_token": "", "bot_username": ""}
+TELEGRAM_STANDARD = {"bot_token": "", "bot_username": "", "aktiv": True}
 TELEGRAM_CODE_GUELTIG_SEK = 600  # 10 Minuten Zeitfenster fuer den Verbinden-Link
 
 # STATUS_PATH/TUER_SIMULATION_PATH/TUER_NEUSTART_SIGNAL_PATH sind reine
@@ -255,7 +255,7 @@ PUSHOVER_MELDUNGEN_SCHEMA = [
     {"id": "geschlossen", "label": "Tür wurde wieder geschlossen"},
 ]
 PUSHOVER_STANDARD = {
-    "token": "", "user": "",
+    "token": "", "user": "", "aktiv": True,
     "meldungen": {
         "boot": {"aktiv": True, "text": "Raspi wurde gestartet!"},
         "geoeffnet": {"aktiv": True, "text": "HONIGBOX wurde geöffnet!"},
@@ -557,6 +557,7 @@ def _schreibe_pushover_shell_conf(werte):
     zeilen = [
         f"PUSHOVER_TOKEN={_sh_quote(werte['token'])}",
         f"PUSHOVER_USER={_sh_quote(werte['user'])}",
+        f"PUSHOVER_AKTIV={_sh_quote('1' if werte.get('aktiv', True) else '0')}",
     ]
     for schema in PUSHOVER_MELDUNGEN_SCHEMA:
         mid = schema["id"]
@@ -571,6 +572,7 @@ def speichere_pushover_einstellungen(rohdaten):
     bereinigt = {
         "token": str(rohdaten.get("token", "")).strip(),
         "user": str(rohdaten.get("user", "")).strip(),
+        "aktiv": bool(rohdaten.get("aktiv", True)),
         "meldungen": {},
     }
     roh_meldungen = rohdaten.get("meldungen") or {}
@@ -611,9 +613,10 @@ def lade_telegram_einstellungen():
     return _lade_einstellungen_datei(TELEGRAM_EINSTELLUNGEN_PATH, TELEGRAM_STANDARD)
 
 
-def _schreibe_telegram_shell_conf(bot_token):
+def _schreibe_telegram_shell_conf(bot_token, aktiv=True):
     with open(TELEGRAM_SHELL_CONF_PATH, "w") as f:
         f.write(f"TELEGRAM_BOT_TOKEN={_sh_quote(bot_token)}\n")
+        f.write(f"TELEGRAM_AKTIV={_sh_quote('1' if aktiv else '0')}\n")
 
 
 def telegram_bot_info(token):
@@ -642,16 +645,17 @@ def speichere_telegram_einstellungen(rohdaten):
     falls der Token nicht bestaetigt werden konnte, damit ein echter Tippfehler
     trotzdem auffaellt statt sich unbemerkt festzusetzen."""
     token = str(rohdaten.get("bot_token", "")).strip()
+    aktiv = bool(rohdaten.get("aktiv", True))
     username = ""
     warnung = None
     if token:
         ok, username, fehler = telegram_bot_info(token)
         if not ok:
             warnung = f"Bot-Token konnte nicht bestätigt werden: {fehler}"
-    bereinigt = {"bot_token": token, "bot_username": username}
+    bereinigt = {"bot_token": token, "bot_username": username, "aktiv": aktiv}
     with open(TELEGRAM_EINSTELLUNGEN_PATH, "w") as f:
         json.dump(bereinigt, f)
-    _schreibe_telegram_shell_conf(token)
+    _schreibe_telegram_shell_conf(token, aktiv)
     return bereinigt, warnung
 
 

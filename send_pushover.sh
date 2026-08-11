@@ -20,6 +20,10 @@ elif [ -f "$ALTE_KONFIG" ]; then
   source "$ALTE_KONFIG"
 fi
 
+# Kompletter Kanal-Schalter ("Pushover aktiv" in den Einstellungen) - unabhaengig
+# vom Telegram-Schalter, siehe send_telegram.sh.
+[ "${PUSHOVER_AKTIV:-1}" = "0" ] && exit 0
+
 # Voruebergehende Stummschaltung (Button auf der Startseite, 30 Min.) - gilt
 # fuer ALLE Meldungen, deshalb ganz am Anfang geprueft, noch vor der
 # einzelnen ENABLED_<id>-Einstellung.

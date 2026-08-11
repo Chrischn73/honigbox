@@ -88,6 +88,22 @@ def test_telegram_einstellungen_speichert_auch_bei_ungueltigem_token(server, mon
     assert data["werte"]["bot_token"] == "falscher-token"
 
 
+def test_telegram_aktiv_standard_an_und_abschaltbar(server):
+    base_url, mod = server
+    status, data = get(base_url, "/api/telegram")
+    assert data["werte"]["aktiv"] is True, "Standard muss an sein, sonst blieben bestehende Installationen stumm"
+
+    status, data = post(base_url, "/api/telegram", {"bot_token": "", "aktiv": False})
+    assert status == 200
+    assert data["werte"]["aktiv"] is False
+
+    status, data = get(base_url, "/api/telegram")
+    assert data["werte"]["aktiv"] is False, "Schalter wurde nicht dauerhaft gespeichert"
+
+    with open(mod.TELEGRAM_SHELL_CONF_PATH) as f:
+        assert "TELEGRAM_AKTIV='0'" in f.read()
+
+
 def test_telegram_verbinden_ohne_token_liefert_fehler(server):
     base_url, _ = server
     status, data = post(base_url, "/api/telegram/verbinden", {})

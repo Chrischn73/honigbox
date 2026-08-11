@@ -13,6 +13,10 @@ TELEGRAM_KONFIG="$DIR/einstellungen/.telegram-einstellungen.sh"
 source "$TELEGRAM_KONFIG"
 [ -n "$TELEGRAM_BOT_TOKEN" ] || exit 0
 
+# Kompletter Kanal-Schalter ("Telegram aktiv" in den Einstellungen) - unabhaengig
+# vom Pushover-Schalter, siehe send_pushover.sh.
+[ "${TELEGRAM_AKTIV:-1}" = "0" ] && exit 0
+
 CHATS_DATEI="$DIR/einstellungen/.telegram-chats.json"
 [ -f "$CHATS_DATEI" ] || exit 0
 

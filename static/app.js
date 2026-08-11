@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.3';
+const APP_VERSION = 'v1.3.4';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -38,6 +38,7 @@ const einstellungenDetailsListe = document.querySelectorAll('#ansicht-einstellun
 const fotoZeitplanFelderContainer = document.getElementById('foto-zeitplan-felder');
 const fotoZeitplanSpeichernBtn = document.getElementById('foto-zeitplan-speichern');
 const fotoZeitplanZuruecksetzenBtn = document.getElementById('foto-zeitplan-zuruecksetzen');
+const pushoverAktivInp = document.getElementById('pushover-aktiv');
 const pushoverTokenInp = document.getElementById('pushover-token');
 const pushoverUserInp = document.getElementById('pushover-user');
 const pushoverMeldungenContainer = document.getElementById('pushover-meldungen');
@@ -45,6 +46,7 @@ const pushoverSpeichernBtn = document.getElementById('pushover-speichern');
 const pushoverAlleAktivierenBtn = document.getElementById('pushover-alle-aktivieren');
 const pushoverAlleDeaktivierenBtn = document.getElementById('pushover-alle-deaktivieren');
 const pushoverTestBtn = document.getElementById('pushover-test');
+const telegramAktivInp = document.getElementById('telegram-aktiv');
 const telegramBotTokenInp = document.getElementById('telegram-bot-token');
 const telegramSpeichernBtn = document.getElementById('telegram-speichern');
 const telegramVerbindenBtn = document.getElementById('telegram-verbinden');
@@ -760,6 +762,7 @@ async function ladePushoverEinstellungen() {
   try {
     const res = await fetch('/api/pushover');
     const data = await res.json();
+    pushoverAktivInp.checked = data.werte.aktiv !== false;
     pushoverTokenInp.value = data.werte.token;
     pushoverUserInp.value = data.werte.user;
     renderPushoverMeldungen(data.meldungen_schema, data.werte.meldungen);
@@ -770,6 +773,7 @@ async function ladePushoverEinstellungen() {
 
 async function speicherePushoverEinstellungen() {
   const body = {
+    aktiv: pushoverAktivInp.checked,
     token: pushoverTokenInp.value,
     user: pushoverUserInp.value,
     meldungen: sammlePushoverMeldungen(),
@@ -781,6 +785,7 @@ async function speicherePushoverEinstellungen() {
   });
   if (res.ok) {
     const data = await res.json();
+    pushoverAktivInp.checked = data.werte.aktiv !== false;
     pushoverTokenInp.value = data.werte.token;
     pushoverUserInp.value = data.werte.user;
     renderPushoverMeldungen(pushoverMeldungenSchema, data.werte.meldungen);
@@ -847,6 +852,7 @@ async function ladeTelegramEinstellungen() {
   try {
     const res = await fetch('/api/telegram');
     const data = await res.json();
+    telegramAktivInp.checked = data.werte.aktiv !== false;
     telegramBotTokenInp.value = data.werte.bot_token;
     renderTelegramChats(data.chats);
     return data.chats;
@@ -862,10 +868,11 @@ async function speichereTelegramEinstellungen() {
     const res = await fetch('/api/telegram', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bot_token: telegramBotTokenInp.value }),
+      body: JSON.stringify({ aktiv: telegramAktivInp.checked, bot_token: telegramBotTokenInp.value }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
+      telegramAktivInp.checked = data.werte.aktiv !== false;
       telegramBotTokenInp.value = data.werte.bot_token;
       toast(data.warnung || 'Telegram-Einstellungen gespeichert');
     } else {

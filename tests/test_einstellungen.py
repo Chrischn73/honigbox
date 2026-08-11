@@ -49,6 +49,22 @@ def test_pushover_einstellungen_rundtrip(server):
     assert data["werte"]["user"] == "xyz789"
 
 
+def test_pushover_aktiv_standard_an_und_abschaltbar(server):
+    base_url, mod = server
+    status, data = get(base_url, "/api/pushover")
+    assert data["werte"]["aktiv"] is True, "Standard muss an sein, sonst blieben bestehende Installationen stumm"
+
+    status, data = post(base_url, "/api/pushover", {"token": "abc", "user": "xyz", "aktiv": False})
+    assert status == 200
+    assert data["werte"]["aktiv"] is False
+
+    status, data = get(base_url, "/api/pushover")
+    assert data["werte"]["aktiv"] is False, "Schalter wurde nicht dauerhaft gespeichert"
+
+    with open(mod.PUSHOVER_SHELL_CONF_PATH) as f:
+        assert "PUSHOVER_AKTIV='0'" in f.read()
+
+
 def test_pushover_eskalation_texte_nennen_vier_und_34_minuten(server):
     """Regressionstest: Texte wurden 2026-08-08 von '3'/'33' Minuten auf
     '4'/'34' Minuten korrigiert (passend zu WAIT_ESCALATE_1=240s in honigbox.sh)."""
