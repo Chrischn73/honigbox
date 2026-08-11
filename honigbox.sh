@@ -148,6 +148,12 @@ def run(script, *args):
 
 def push(meldung_id):
     run("send_pushover.sh", meldung_id)
+    # Telegram bewusst per Popen (nicht run()/wait) angestossen - send_pushover.sh
+    # oben blockiert schon bis zu mehrere Sekunden bei Netzwerkproblemen
+    # (curl --retry); ein zweiter, ebenfalls wartender Aufruf wuerde diese
+    # Verzoegerung fuer die Tuerueberwachung verdoppeln. Telegram braucht das
+    # Ergebnis hier nicht, laeuft also unabhaengig im Hintergrund weiter.
+    subprocess.Popen([f"{SCRIPT_DIR}/send_telegram.sh", meldung_id])
 
 
 def confirm_still_open():

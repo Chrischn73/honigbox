@@ -107,6 +107,11 @@ body{
 }
 
 .pushover-meldungen{display:flex; flex-direction:column; gap:.6rem; margin:.9rem 0}
+
+.telegram-chat-zeile{display:flex; align-items:center; justify-content:space-between; gap:.6rem;
+  padding:.5rem .7rem; border:1px solid var(--line); border-radius:10px; background:var(--bg);
+  margin-top:.5rem; font-size:.85rem}
+.telegram-chat-zeile span{overflow:hidden; text-overflow:ellipsis}
 .pushover-zeile{display:flex; flex-direction:column; gap:.4rem; padding:.6rem .7rem;
   border:1px solid var(--line); border-radius:10px; background:var(--bg)}
 .pushover-zeile-kopf{display:flex; align-items:center; gap:.5rem; font-weight:600; font-size:.9rem; cursor:pointer}

@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import threading
@@ -197,6 +198,22 @@ PUSHOVER_SHELL_CONF_PATH = os.environ.get(
     "GALERIE_PUSHOVER_SHELL_CONF", os.path.join(EINSTELLUNGEN_DIR, ".pushover-einstellungen.sh")
 )
 ALTE_PUSHOVER_CONF_PATH = os.path.join(BASE, "pushover.conf")
+
+# Telegram ist ein zweiter, unabhaengiger Benachrichtigungskanal neben
+# Pushover (beide gleichzeitig aktivierbar) - nutzt bewusst DIESELBEN
+# Meldungstexte/aktiv-Schalter aus PUSHOVER_MELDUNGEN_SCHEMA (siehe unten)
+# statt eines eigenen Text-Systems, um das nicht zu duplizieren ("erster
+# Schritt", kann spaeter erweitert werden). Eigener Bot-Token pro Installation
+# (kein fest eingebauter, gemeinsamer Token) - vermeidet, dass mehrere
+# Installationen sich beim Telegram-getUpdates-Polling gegenseitig die
+# Nachrichten "wegschnappen" (siehe Diskussion 2026-08-10).
+TELEGRAM_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-einstellungen.json")
+TELEGRAM_SHELL_CONF_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-einstellungen.sh")
+TELEGRAM_CHATS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-chats.json")
+TELEGRAM_PENDING_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-pending-codes.json")
+TELEGRAM_OFFSET_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-update-offset")
+TELEGRAM_STANDARD = {"bot_token": "", "bot_username": ""}
+TELEGRAM_CODE_GUELTIG_SEK = 600  # 10 Minuten Zeitfenster fuer den Verbinden-Link
 
 # STATUS_PATH/TUER_SIMULATION_PATH/TUER_NEUSTART_SIGNAL_PATH sind reine
 # Signaldateien fuer die Verstaendigung mit honigbox.sh (siehe dort) - deren
@@ -588,6 +605,187 @@ def sende_pushover_test(token, user):
             return False, str(e)
     except (urllib.error.URLError, OSError) as e:
         return False, str(e)
+
+
+def lade_telegram_einstellungen():
+    return _lade_einstellungen_datei(TELEGRAM_EINSTELLUNGEN_PATH, TELEGRAM_STANDARD)
+
+
+def _schreibe_telegram_shell_conf(bot_token):
+    with open(TELEGRAM_SHELL_CONF_PATH, "w") as f:
+        f.write(f"TELEGRAM_BOT_TOKEN={_sh_quote(bot_token)}\n")
+
+
+def telegram_bot_info(token):
+    """Fragt Telegrams getMe-Endpunkt ab - liefert den Bot-Benutzernamen fuer
+    den Verbinden-Deep-Link (t.me/<username>?start=<code>) und bestaetigt
+    nebenbei, ob der Token ueberhaupt gueltig ist. (ok, username, fehlertext)."""
+    try:
+        with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getMe", timeout=10) as resp:
+            antwort = json.loads(resp.read().decode())
+        if antwort.get("ok"):
+            return True, antwort["result"].get("username", ""), ""
+        return False, "", antwort.get("description", "Unbekannter Fehler")
+    except urllib.error.HTTPError as e:
+        try:
+            antwort = json.loads(e.read().decode())
+            return False, "", antwort.get("description", str(e))
+        except (json.JSONDecodeError, OSError):
+            return False, "", str(e)
+    except (urllib.error.URLError, OSError) as e:
+        return False, "", str(e)
+
+
+def speichere_telegram_einstellungen(rohdaten):
+    """Speichert immer (auch wenn die getMe-Bestaetigung fehlschlaegt, z.B.
+    bei einem kurzen Netzwerkaussetzer) - gibt aber eine Warnung zurueck,
+    falls der Token nicht bestaetigt werden konnte, damit ein echter Tippfehler
+    trotzdem auffaellt statt sich unbemerkt festzusetzen."""
+    token = str(rohdaten.get("bot_token", "")).strip()
+    username = ""
+    warnung = None
+    if token:
+        ok, username, fehler = telegram_bot_info(token)
+        if not ok:
+            warnung = f"Bot-Token konnte nicht bestätigt werden: {fehler}"
+    bereinigt = {"bot_token": token, "bot_username": username}
+    with open(TELEGRAM_EINSTELLUNGEN_PATH, "w") as f:
+        json.dump(bereinigt, f)
+    _schreibe_telegram_shell_conf(token)
+    return bereinigt, warnung
+
+
+def lade_telegram_chats():
+    return _lade_einstellungen_datei(TELEGRAM_CHATS_PATH, {})
+
+
+def entferne_telegram_chat(chat_id):
+    chats = lade_telegram_chats()
+    if str(chat_id) in chats:
+        del chats[str(chat_id)]
+        with open(TELEGRAM_CHATS_PATH, "w") as f:
+            json.dump(chats, f)
+    return chats
+
+
+def erzeuge_telegram_verbindungscode():
+    """Kurzer Zufallscode fuer den Deep-Link t.me/<bot>?start=<code> - beim
+    Antippen von 'Start' in Telegram schickt der Nutzer '/start <code>' an
+    den Bot, telegram_wache_schleife() ordnet das dann dieser Anfrage zu.
+    Raeumt abgelaufene Codes gleich mit auf, damit die Datei nicht waechst."""
+    code = secrets.token_hex(4)
+    pending = _lade_einstellungen_datei(TELEGRAM_PENDING_PATH, {})
+    jetzt = time.time()
+    pending = {c: v for c, v in pending.items() if jetzt - v.get("erstellt", 0) < TELEGRAM_CODE_GUELTIG_SEK}
+    pending[code] = {"erstellt": jetzt}
+    with open(TELEGRAM_PENDING_PATH, "w") as f:
+        json.dump(pending, f)
+    return code
+
+
+def _telegram_offset_lesen():
+    try:
+        with open(TELEGRAM_OFFSET_PATH) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def _telegram_offset_schreiben(offset):
+    try:
+        with open(TELEGRAM_OFFSET_PATH, "w") as f:
+            f.write(str(offset))
+    except OSError:
+        pass
+
+
+def _telegram_sende_nachricht(token, chat_id, text):
+    try:
+        daten = urlencode({"chat_id": chat_id, "text": text}).encode()
+        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=daten)
+        urllib.request.urlopen(req, timeout=10)
+    except (urllib.error.URLError, OSError):
+        pass
+
+
+def telegram_update_verarbeiten(antwort, offset):
+    """Kern von telegram_wache_schleife() - von der Netzwerk-Abfrage getrennt,
+    damit es sich isoliert (ohne echten HTTP-Request) testen laesst. Ordnet
+    '/start <code>'-Nachrichten offenen Verbindungs-Codes zu, verschickt bei
+    Erfolg eine Bestaetigung. Gibt den naechsten zu verwendenden Offset
+    zurueck (hoechste gesehene update_id + 1, auch fuer nicht zutreffende
+    Updates - sonst wuerden diese bei jedem Poll erneut zurueckgeliefert)."""
+    einstellungen = lade_telegram_einstellungen()
+    token = einstellungen.get("bot_token", "")
+    pending = _lade_einstellungen_datei(TELEGRAM_PENDING_PATH, {})
+    chats = lade_telegram_chats()
+    pending_geaendert = False
+    chats_geaendert = False
+    for update in antwort.get("result", []):
+        offset = max(offset, update["update_id"] + 1)
+        nachricht = update.get("message") or {}
+        text = (nachricht.get("text") or "").strip()
+        if not text.startswith("/start"):
+            continue
+        teile = text.split(maxsplit=1)
+        if len(teile) < 2:
+            continue
+        code = teile[1].strip()
+        eintrag = pending.get(code)
+        if not eintrag or time.time() - eintrag.get("erstellt", 0) > TELEGRAM_CODE_GUELTIG_SEK:
+            continue
+        chat = nachricht.get("chat") or {}
+        chat_id = str(chat.get("id", ""))
+        if not chat_id:
+            continue
+        name = chat.get("first_name") or chat.get("username") or "Unbekannt"
+        chats[chat_id] = {"name": name, "verknuepft_am": time.strftime("%Y-%m-%d %H:%M")}
+        chats_geaendert = True
+        del pending[code]
+        pending_geaendert = True
+        if token:
+            _telegram_sende_nachricht(
+                token, chat_id,
+                "✅ Verbindung erfolgreich! Du erhältst ab jetzt Benachrichtigungen von HonigBox.")
+    if chats_geaendert:
+        try:
+            with open(TELEGRAM_CHATS_PATH, "w") as f:
+                json.dump(chats, f)
+        except OSError:
+            pass
+    if pending_geaendert:
+        try:
+            with open(TELEGRAM_PENDING_PATH, "w") as f:
+                json.dump(pending, f)
+        except OSError:
+            pass
+    return offset
+
+
+def telegram_wache_schleife():
+    """Hintergrund-Poller (in main() als Thread gestartet): fragt Telegrams
+    getUpdates per Long-Poll (25 Sek. Server-seitiges Warten) ab. Laeuft nur
+    tatsaechlich gegen die Telegram-API, solange ein Bot-Token eingetragen
+    ist - ohne Token nur eine kurze Pause, kein unnoetiger Netzwerkaufruf."""
+    while True:
+        einstellungen = lade_telegram_einstellungen()
+        token = einstellungen.get("bot_token", "")
+        if not token:
+            time.sleep(10)
+            continue
+        offset = _telegram_offset_lesen()
+        try:
+            url = f"https://api.telegram.org/bot{token}/getUpdates?offset={offset}&timeout=25"
+            with urllib.request.urlopen(url, timeout=35) as resp:
+                antwort = json.loads(resp.read().decode())
+        except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError):
+            time.sleep(10)
+            continue
+        if not antwort.get("ok"):
+            time.sleep(10)
+            continue
+        neuer_offset = telegram_update_verarbeiten(antwort, offset)
+        _telegram_offset_schreiben(neuer_offset)
 
 
 def pushover_stumm_rest_sekunden():
@@ -1031,6 +1229,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"werte": lade_foto_zeitplan(), "felder": FOTO_ZEITPLAN_FELDER})
         if path == "/api/pushover":
             return self._json({"werte": lade_pushover_einstellungen(), "meldungen_schema": PUSHOVER_MELDUNGEN_SCHEMA})
+        if path == "/api/telegram":
+            return self._json({"werte": lade_telegram_einstellungen(), "chats": lade_telegram_chats()})
         if path == "/api/status":
             tuer = lade_tuer_status()
             return self._json({
@@ -1155,6 +1355,32 @@ class Handler(BaseHTTPRequestHandler):
             setze_pushover_stumm(bool(body.get("aktiv")), body.get("dauer_minuten"))
             return self._json({"ok": True, "rest_sekunden": pushover_stumm_rest_sekunden()})
 
+        if path == "/api/telegram":
+            body = self._rjson()
+            bereinigt, warnung = speichere_telegram_einstellungen(body)
+            return self._json({"ok": True, "werte": bereinigt, "warnung": warnung})
+
+        if path == "/api/telegram/verbinden":
+            einstellungen = lade_telegram_einstellungen()
+            token = einstellungen.get("bot_token", "")
+            if not token:
+                return self._err(400, "Bitte zuerst einen Bot-Token eintragen und speichern.")
+            username = einstellungen.get("bot_username", "")
+            if not username:
+                ok, username, fehler = telegram_bot_info(token)
+                if not ok:
+                    return self._err(400, f"Bot-Token konnte nicht bestätigt werden: {fehler}")
+                einstellungen["bot_username"] = username
+                with open(TELEGRAM_EINSTELLUNGEN_PATH, "w") as f:
+                    json.dump(einstellungen, f)
+            code = erzeuge_telegram_verbindungscode()
+            return self._json({"ok": True, "code": code, "bot_username": username})
+
+        if path == "/api/telegram/trennen":
+            body = self._rjson()
+            chats = entferne_telegram_chat(body.get("chat_id", ""))
+            return self._json({"ok": True, "chats": chats})
+
         if path == "/api/system/neustart":
             ok, fehler = _system_aktion(["sudo", "-n", "/usr/bin/systemctl", "reboot"])
             if not ok:
@@ -1217,6 +1443,7 @@ def main():
     threading.Thread(target=aufraeum_schleife, daemon=True).start()
     threading.Thread(target=speicher_wache_schleife, daemon=True).start()
     threading.Thread(target=kamera_wache_schleife, daemon=True).start()
+    threading.Thread(target=telegram_wache_schleife, daemon=True).start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"HonigBox-Galerie läuft auf http://{HOST}:{PORT}  (Bilder: {BILDER_DIR})")
     try:

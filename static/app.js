@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.1';
+const APP_VERSION = 'v1.3.2';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -45,6 +45,11 @@ const pushoverSpeichernBtn = document.getElementById('pushover-speichern');
 const pushoverAlleAktivierenBtn = document.getElementById('pushover-alle-aktivieren');
 const pushoverAlleDeaktivierenBtn = document.getElementById('pushover-alle-deaktivieren');
 const pushoverTestBtn = document.getElementById('pushover-test');
+const telegramBotTokenInp = document.getElementById('telegram-bot-token');
+const telegramSpeichernBtn = document.getElementById('telegram-speichern');
+const telegramVerbindenBtn = document.getElementById('telegram-verbinden');
+const telegramVerbindenBoxEl = document.getElementById('telegram-verbinden-box');
+const telegramChatsListeEl = document.getElementById('telegram-chats-liste');
 const statusRaspiEl = document.getElementById('status-raspi');
 const statusDienstEl = document.getElementById('status-dienst');
 const statusTuerEl = document.getElementById('status-tuer');
@@ -815,6 +820,129 @@ async function pushoverTestSenden() {
   }
 }
 
+let telegramVerbindenPollTimer = null;
+
+function renderTelegramChats(chats) {
+  telegramChatsListeEl.innerHTML = '';
+  const eintraege = Object.entries(chats || {});
+  if (eintraege.length === 0) {
+    telegramChatsListeEl.innerHTML = '<p class="muted" style="font-size:.85rem;">Noch niemand verbunden.</p>';
+    return;
+  }
+  eintraege.forEach(([chatId, info]) => {
+    const zeile = document.createElement('div');
+    zeile.className = 'telegram-chat-zeile';
+    const text = document.createElement('span');
+    text.textContent = `✅ ${info.name} (verbunden seit ${info.verknuepft_am})`;
+    const trennenBtn = document.createElement('button');
+    trennenBtn.className = 'btn btn-sm btn-ghost';
+    trennenBtn.textContent = 'Trennen';
+    trennenBtn.addEventListener('click', () => telegramTrennen(chatId));
+    zeile.append(text, trennenBtn);
+    telegramChatsListeEl.appendChild(zeile);
+  });
+}
+
+async function ladeTelegramEinstellungen() {
+  try {
+    const res = await fetch('/api/telegram');
+    const data = await res.json();
+    telegramBotTokenInp.value = data.werte.bot_token;
+    renderTelegramChats(data.chats);
+    return data.chats;
+  } catch {
+    toast('Telegram-Einstellungen konnten nicht geladen werden');
+    return {};
+  }
+}
+
+async function speichereTelegramEinstellungen() {
+  telegramSpeichernBtn.disabled = true;
+  try {
+    const res = await fetch('/api/telegram', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bot_token: telegramBotTokenInp.value }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      telegramBotTokenInp.value = data.werte.bot_token;
+      toast(data.warnung || 'Telegram-Einstellungen gespeichert');
+    } else {
+      toast(data.error || 'Fehler beim Speichern');
+    }
+  } catch {
+    toast('Fehler beim Speichern');
+  } finally {
+    telegramSpeichernBtn.disabled = false;
+  }
+}
+
+function telegramVerbindenPollingBeenden() {
+  if (telegramVerbindenPollTimer) {
+    clearTimeout(telegramVerbindenPollTimer);
+    telegramVerbindenPollTimer = null;
+  }
+}
+
+async function telegramVerbinden() {
+  telegramVerbindenPollingBeenden();
+  telegramVerbindenBtn.disabled = true;
+  try {
+    const res = await fetch('/api/telegram/verbinden', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast(data.error || 'Verbinden fehlgeschlagen');
+      return;
+    }
+    const link = `https://t.me/${data.bot_username}?start=${data.code}`;
+    telegramVerbindenBoxEl.hidden = false;
+    telegramVerbindenBoxEl.innerHTML =
+      `<p>1. <a href="${link}" target="_blank" rel="noopener">Diesen Link antippen</a><br>` +
+      '2. In Telegram auf „Start“ tippen<br>' +
+      '3. Kurz warten – diese Seite erkennt die Verbindung automatisch.</p>' +
+      '<p class="muted" style="font-size:.8rem;">Wartet auf Bestätigung… (Link 10 Minuten gültig)</p>';
+
+    const vorherigeChatIds = new Set(Object.keys(await ladeTelegramEinstellungen()));
+    const pruefeVerbindung = async () => {
+      const chats = await ladeTelegramEinstellungen();
+      const neueChatIds = Object.keys(chats).filter((id) => !vorherigeChatIds.has(id));
+      if (neueChatIds.length > 0) {
+        telegramVerbindenBoxEl.hidden = true;
+        toast('Telegram erfolgreich verbunden!');
+        telegramVerbindenPollingBeenden();
+        return;
+      }
+      telegramVerbindenPollTimer = setTimeout(pruefeVerbindung, 3000);
+    };
+    telegramVerbindenPollTimer = setTimeout(pruefeVerbindung, 3000);
+  } catch {
+    toast('Verbinden fehlgeschlagen');
+  } finally {
+    telegramVerbindenBtn.disabled = false;
+  }
+}
+
+async function telegramTrennen(chatId) {
+  if (!await bestaetigen('Diese Telegram-Verbindung trennen?')) return;
+  try {
+    const res = await fetch('/api/telegram/trennen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      renderTelegramChats(data.chats);
+      toast('Verbindung getrennt');
+    } else {
+      toast('Fehler beim Trennen');
+    }
+  } catch {
+    toast('Fehler beim Trennen');
+  }
+}
+
 async function meldeSystemFehler(res, standardText) {
   const data = await res.json().catch(() => ({}));
   toast(data.error || standardText);
@@ -1263,6 +1391,8 @@ pushoverSpeichernBtn.addEventListener('click', speicherePushoverEinstellungen);
 pushoverAlleAktivierenBtn.addEventListener('click', () => pushoverAlleSetzen(true));
 pushoverAlleDeaktivierenBtn.addEventListener('click', () => pushoverAlleSetzen(false));
 pushoverTestBtn.addEventListener('click', pushoverTestSenden);
+telegramSpeichernBtn.addEventListener('click', speichereTelegramEinstellungen);
+telegramVerbindenBtn.addEventListener('click', telegramVerbinden);
 simDauerSpeichernBtn.addEventListener('click', speichereSimulationDauer);
 speicherOrtSel.addEventListener('change', aktualisiereSpeicherFeldSichtbarkeit);
 speicherUebernehmenBtn.addEventListener('click', speicherUebernehmen);
@@ -1292,6 +1422,7 @@ zeigeAnsicht('fotos');
 ladeKameraEinstellungen();
 ladeFotoZeitplan();
 ladePushoverEinstellungen();
+ladeTelegramEinstellungen();
 ladeSimulationDauer();
 ladeTuerEinstellungen();
 ladeSpeicherEinstellungen();

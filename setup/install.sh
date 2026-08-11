@@ -49,7 +49,7 @@ log() { echo; echo "==> $*"; }
 
 # ---------------------------------------------------------------------------
 log "Pruefe benoetigte Dateien in $PROJECT_DIR"
-for f in honigbox.sh foto.sh send_pushover.sh galerie_server.py speicher_umschalten.sh static \
+for f in honigbox.sh foto.sh send_pushover.sh send_telegram.sh galerie_server.py speicher_umschalten.sh static \
          honigbox.service honigbox-galerie.service; do
     if [ ! -e "$PROJECT_DIR/$f" ]; then
         echo "FEHLER: $PROJECT_DIR/$f fehlt. Wurde der komplette Projekt-Ordner uebertragen?"
@@ -165,6 +165,7 @@ sicher_kopiere_ordner() {
 sicher_kopieren "$PROJECT_DIR/honigbox.sh" /opt/honigbox/honigbox.sh
 sicher_kopieren "$PROJECT_DIR/foto.sh" /opt/honigbox/foto.sh
 sicher_kopieren "$PROJECT_DIR/send_pushover.sh" /opt/honigbox/send_pushover.sh
+sicher_kopieren "$PROJECT_DIR/send_telegram.sh" /opt/honigbox/send_telegram.sh
 sicher_kopieren "$PROJECT_DIR/galerie_server.py" /opt/honigbox/galerie_server.py
 sicher_kopieren "$PROJECT_DIR/speicher_umschalten.sh" /opt/honigbox/speicher_umschalten.sh
 sicher_kopieren "$SETUP_DIR/honigbox-restore-hook.sh" /opt/honigbox/honigbox-restore-hook.sh
@@ -174,7 +175,7 @@ sicher_kopiere_ordner "$PROJECT_DIR/static" /opt/honigbox/static
 # honigbox.sh beim Aufruf mit "Permission denied" ab (ist uns schon einmal
 # so passiert).
 chmod +x /opt/honigbox/honigbox.sh /opt/honigbox/foto.sh /opt/honigbox/send_pushover.sh \
-    /opt/honigbox/speicher_umschalten.sh /opt/honigbox/honigbox-restore-hook.sh
+    /opt/honigbox/send_telegram.sh /opt/honigbox/speicher_umschalten.sh /opt/honigbox/honigbox-restore-hook.sh
 
 # Pushover-Zugangsdaten nur beim allerersten Einrichten anlegen, damit ein
 # spaeter ueber die Web-UI gespeicherter echter Token bei einem erneuten
@@ -326,6 +327,7 @@ cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
       {"src": "honigbox.sh", "dest": "/opt/honigbox/honigbox.sh", "mode": "0755"},
       {"src": "foto.sh", "dest": "/opt/honigbox/foto.sh", "mode": "0755"},
       {"src": "send_pushover.sh", "dest": "/opt/honigbox/send_pushover.sh", "mode": "0755"},
+      {"src": "send_telegram.sh", "dest": "/opt/honigbox/send_telegram.sh", "mode": "0755"},
       {"src": "galerie_server.py", "dest": "/opt/honigbox/galerie_server.py", "mode": "0644", "chown": "www-data:www-data"},
       {"src": "speicher_umschalten.sh", "dest": "/opt/honigbox/speicher_umschalten.sh", "mode": "0755"},
       {"src": "setup/honigbox-restore-hook.sh", "dest": "/opt/honigbox/honigbox-restore-hook.sh", "mode": "0755"},

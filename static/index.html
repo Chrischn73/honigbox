@@ -112,6 +112,24 @@
       </details>
 
       <details class="kamera-details">
+        <summary>✈️ Telegram-Einstellungen</summary>
+        <p class="muted" style="font-size:.85rem; margin-top:0;">Zweiter, von Pushover unabhängiger Benachrichtigungsweg – beide können
+        gleichzeitig aktiv sein. Anleitung zum Erstellen eines eigenen Telegram-Bots siehe „❓ Hilfe“.</p>
+        <div class="kamera-felder">
+          <div class="kamera-feld">
+            <label for="telegram-bot-token">Telegram Bot-Token</label>
+            <input type="text" id="telegram-bot-token" placeholder="von @BotFather erhalten">
+          </div>
+        </div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="telegram-speichern">Speichern</button>
+          <button class="btn btn-sm btn-ghost" id="telegram-verbinden">🔗 Telegram verbinden</button>
+        </div>
+        <div id="telegram-verbinden-box" class="msg" hidden></div>
+        <div id="telegram-chats-liste"></div>
+      </details>
+
+      <details class="kamera-details">
         <summary>🧪 Simulation</summary>
         <p class="muted test-hinweis">Simuliert eine echte Türöffnung (löst Pushover-Meldungen und Fotos wie beim echten Öffnen aus) – zum Testen vom Sofa aus, ohne den Schalter anzufassen. Funktioniert auch, wenn die Tür gerade schon offen ist: startet den Zyklus dann einfach von vorne, praktisch zum Durchtesten/Anpassen der Foto-Einstellungen.</p>
         <div class="kamera-felder">
@@ -203,6 +221,23 @@
           <li>Beide Schlüssel (User Key + API Token) unter „🔔 Pushover-Einstellungen“ in HonigBox
           eintragen und speichern, danach über „📨 Test senden“ prüfen</li>
         </ol>
+
+        <hr class="hilfe-trenner">
+        <h3 class="hilfe-titel">✈️ Telegram einrichten (optional, zusätzlich zu Pushover)</h3>
+        <p>Telegram ist ein zweiter, unabhängiger Benachrichtigungsweg – komplett kostenlos, auch ohne
+        eigenen Pushover-Account nutzbar. Ein eigener Bot ist in wenigen Minuten erstellt:</p>
+        <ol style="margin:.3rem 0 .8rem; padding-left:1.2rem; font-size:.9rem">
+          <li>Telegram-App installieren (falls noch nicht vorhanden) und den Kontakt
+          <strong>@BotFather</strong> öffnen (offizieller Telegram-Bot zum Erstellen eigener Bots)</li>
+          <li>Nachricht <code>/newbot</code> schicken, dann einen beliebigen Namen und einen
+          eindeutigen Benutzernamen vergeben (muss auf <code>bot</code> enden, z. B. <code>MeineHonigBoxBot</code>)</li>
+          <li>@BotFather antwortet mit einem <strong>Token</strong> (lange Zeichenkette) – diesen kopieren</li>
+          <li>Den Token unter „✈️ Telegram-Einstellungen“ in HonigBox eintragen und speichern</li>
+          <li>Auf „🔗 Telegram verbinden“ tippen, dem angezeigten Link folgen und in Telegram auf
+          „Start“ tippen – die Seite erkennt die Verbindung automatisch</li>
+        </ol>
+        <p class="muted" style="font-size:.85rem;">Mehrere Personen (z. B. der ganze Haushalt) können sich
+        unabhängig voneinander mit demselben Bot verbinden und bekommen dann alle Benachrichtigungen.</p>
       </details>
 
       <details class="kamera-details system-details">
