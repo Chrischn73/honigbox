@@ -94,6 +94,30 @@ def test_tuer_kontakt_invertiert_rundtrip(server):
     assert data["kontakt_invertiert"] is True, "Einstellung wurde nicht dauerhaft gespeichert"
 
 
+def test_galerie_anzeige_standard_einzelbild(server):
+    base_url, _ = server
+    status, data = get(base_url, "/api/galerie-anzeige")
+    assert status == 200
+    assert data["modus"] == "einzelbild"
+
+
+def test_galerie_anzeige_rundtrip(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/galerie-anzeige", {"modus": "feed"})
+    assert status == 200
+    assert data["modus"] == "feed"
+
+    status, data = get(base_url, "/api/galerie-anzeige")
+    assert data["modus"] == "feed", "Einstellung wurde nicht dauerhaft gespeichert"
+
+
+def test_galerie_anzeige_unbekannter_modus_faellt_auf_standard_zurueck(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/galerie-anzeige", {"modus": "irgendwas-erfundenes"})
+    assert status == 200
+    assert data["modus"] == "einzelbild"
+
+
 def test_pushover_stumm_mit_gueltiger_dauer(server):
     base_url, _ = server
     status, data = post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 10})

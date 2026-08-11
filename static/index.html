@@ -56,6 +56,16 @@
           <button class="btn btn-sm btn-primary" id="foto-zeitplan-speichern">Speichern</button>
           <button class="btn btn-sm btn-ghost" id="foto-zeitplan-zuruecksetzen">Zurücksetzen auf Standard</button>
         </div>
+        <div class="kamera-feld-gruppe">Anzeige beim Antippen eines Fotos</div>
+        <div class="kamera-felder">
+          <div class="kamera-feld">
+            <label for="galerie-anzeige-modus">Anzeigeart</label>
+            <select id="galerie-anzeige-modus">
+              <option value="einzelbild">Einzelbild mit Pfeilen (Standard)</option>
+              <option value="feed">Ablauf zum Scrollen (angetipptes Foto oben, ältere darunter)</option>
+            </select>
+          </div>
+        </div>
       </details>
 
       <details class="kamera-details">
@@ -132,6 +142,7 @@
         <div class="kamera-aktionen">
           <button class="btn btn-sm btn-primary" id="telegram-speichern">Speichern</button>
           <button class="btn btn-sm btn-ghost" id="telegram-verbinden">🔗 Telegram verbinden</button>
+          <button class="btn btn-sm btn-ghost" id="telegram-test">📨 Test senden</button>
         </div>
         <div id="telegram-verbinden-box" class="msg" hidden></div>
         <div id="telegram-chats-liste"></div>

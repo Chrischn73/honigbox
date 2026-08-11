@@ -229,6 +229,10 @@ TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-sign
 TUER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-einstellungen.json")
 TUER_EINSTELLUNGEN_STANDARD = {"kontakt_invertiert": False}
 
+GALERIE_ANZEIGE_PATH = os.path.join(EINSTELLUNGEN_DIR, ".galerie-anzeige.json")
+GALERIE_ANZEIGE_MODI = ("einzelbild", "feed")
+GALERIE_ANZEIGE_STANDARD = {"modus": "einzelbild"}
+
 SPEICHER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".speicher-einstellungen.json")
 SIMULATION_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".simulation-einstellungen.json")
 SIMULATION_DAUER_STANDARD_SEK = 120
@@ -704,12 +708,45 @@ def _telegram_offset_schreiben(offset):
 
 
 def _telegram_sende_nachricht(token, chat_id, text):
+    """Gibt (ok, fehlertext) zurueck. Bestehende Aufrufer (Verbindungs-
+    bestaetigung) ignorieren den Rueckgabewert bewusst weiter (fire-and-
+    forget); der Test-Button unten wertet ihn aus."""
     try:
         daten = urlencode({"chat_id": chat_id, "text": text}).encode()
         req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=daten)
-        urllib.request.urlopen(req, timeout=10)
-    except (urllib.error.URLError, OSError):
-        pass
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            antwort = json.loads(resp.read().decode())
+            if antwort.get("ok"):
+                return True, ""
+            return False, antwort.get("description", "Unbekannter Fehler")
+    except urllib.error.HTTPError as e:
+        try:
+            antwort = json.loads(e.read().decode())
+            return False, antwort.get("description", str(e))
+        except (json.JSONDecodeError, OSError):
+            return False, str(e)
+    except (urllib.error.URLError, OSError) as e:
+        return False, str(e)
+
+
+def sende_telegram_test(token):
+    """Schickt eine Testnachricht an alle aktuell verbundenen Chats (Telegram
+    kennt anders als Pushover keinen einzelnen User-Key, sondern eine Liste
+    verknuepfter Chats). Meldet Telegrams Fehlertext zurueck, analog zu
+    sende_pushover_test()."""
+    if not token:
+        return False, "Bot-Token erforderlich"
+    chats = lade_telegram_chats()
+    if not chats:
+        return False, "Noch niemand verbunden – zuerst „Telegram verbinden“ nutzen"
+    fehler = []
+    for chat_id in chats:
+        ok, fehlertext = _telegram_sende_nachricht(token, chat_id, "🍯 BeeTown HonigBox: Testnachricht")
+        if not ok:
+            fehler.append(fehlertext)
+    if fehler:
+        return False, "; ".join(fehler)
+    return True, ""
 
 
 def telegram_update_verarbeiten(antwort, offset):
@@ -886,6 +923,19 @@ def lade_tuer_einstellungen():
 def speichere_tuer_einstellungen(kontakt_invertiert):
     werte = {"kontakt_invertiert": bool(kontakt_invertiert)}
     with open(TUER_EINSTELLUNGEN_PATH, "w") as f:
+        json.dump(werte, f)
+    return werte
+
+
+def lade_galerie_anzeige():
+    return _lade_einstellungen_datei(GALERIE_ANZEIGE_PATH, GALERIE_ANZEIGE_STANDARD)
+
+
+def speichere_galerie_anzeige(modus):
+    if modus not in GALERIE_ANZEIGE_MODI:
+        modus = GALERIE_ANZEIGE_STANDARD["modus"]
+    werte = {"modus": modus}
+    with open(GALERIE_ANZEIGE_PATH, "w") as f:
         json.dump(werte, f)
     return werte
 
@@ -1225,6 +1275,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"dauer_sekunden": lade_simulation_dauer(), "max_sekunden": SIMULATION_DAUER_MAX_SEK})
         if path == "/api/tuer-einstellungen":
             return self._json(lade_tuer_einstellungen())
+        if path == "/api/galerie-anzeige":
+            return self._json(lade_galerie_anzeige())
         if path == "/api/speicher":
             return self._json(speicher_status())
         if path == "/api/kamera":
@@ -1307,6 +1359,11 @@ class Handler(BaseHTTPRequestHandler):
             werte = speichere_tuer_einstellungen(body.get("kontakt_invertiert", False))
             return self._json({"ok": True, **werte})
 
+        if path == "/api/galerie-anzeige":
+            body = self._rjson()
+            werte = speichere_galerie_anzeige(str(body.get("modus", "")).strip())
+            return self._json({"ok": True, **werte})
+
         if path == "/api/speicher":
             body = self._rjson()
             try:
@@ -1363,6 +1420,14 @@ class Handler(BaseHTTPRequestHandler):
             body = self._rjson()
             bereinigt, warnung = speichere_telegram_einstellungen(body)
             return self._json({"ok": True, "werte": bereinigt, "warnung": warnung})
+
+        if path == "/api/telegram/test":
+            body = self._rjson()
+            token = str(body.get("token", "")).strip()
+            ok, fehler = sende_telegram_test(token)
+            if not ok:
+                return self._err(500, f"Test fehlgeschlagen: {fehler}")
+            return self._json({"ok": True})
 
         if path == "/api/telegram/verbinden":
             einstellungen = lade_telegram_einstellungen()

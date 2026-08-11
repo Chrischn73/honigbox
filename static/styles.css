@@ -207,6 +207,22 @@ body{
 .lightbox-nav-prev{left:.5rem}
 .lightbox-nav-next{right:.5rem}
 
+.foto-feed{position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.92);
+  overflow-y:auto; -webkit-overflow-scrolling:touch}
+.foto-feed-schliessen{position:fixed; top:.6rem; right:.6rem; z-index:61;
+  width:40px; height:40px; border-radius:50%; border:none; cursor:pointer;
+  background:rgba(0,0,0,.5); color:#fff; font-size:1.3rem; line-height:1;
+  display:flex; align-items:center; justify-content:center}
+.foto-feed-liste{display:flex; flex-direction:column; gap:1.2rem;
+  padding:3.2rem 1rem 2rem; max-width:900px; margin:0 auto}
+.foto-feed-eintrag{margin:0; display:flex; flex-direction:column; align-items:center}
+.foto-feed-eintrag img{max-width:100%; max-height:88vh; border-radius:8px}
+.foto-feed-eintrag figcaption{color:#eee; margin-top:.5rem; font-size:.85rem;
+  text-align:center; word-break:break-all}
+.foto-feed-aktionen{display:flex; gap:.6rem; margin-top:.5rem}
+.foto-feed-aktionen .btn{min-height:38px; padding:.4rem .9rem; font-size:.85rem}
+.foto-feed-sentinel{height:1px}
+
 .spenden-trenner{border:none; border-top:2px solid var(--honey); margin:1.5rem 0 0}
 .spenden-box{margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--line); text-align:center}
 .spenden-box p{color:var(--ink-soft); font-size:.85rem; margin:0 0 .6rem}

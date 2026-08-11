@@ -137,6 +137,46 @@ def test_telegram_trennen_entfernt_chat(server, monkeypatch):
     assert data["chats"] == {"222": {"name": "Bob"}}, "Trennen wurde nicht dauerhaft gespeichert"
 
 
+def test_telegram_test_ohne_verbundenen_chat_liefert_fehler(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/telegram/test", {"token": "abc123"})
+    assert status == 500
+    assert "niemand verbunden" in data["error"]
+
+
+def test_telegram_test_ohne_token_liefert_fehler(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/telegram/test", {"token": ""})
+    assert status == 500
+    assert "Token" in data["error"]
+
+
+def test_telegram_test_sendet_an_alle_verbundenen_chats(server, monkeypatch):
+    base_url, mod = server
+    with open(mod.TELEGRAM_CHATS_PATH, "w") as f:
+        json.dump({"111": {"name": "Anna"}, "222": {"name": "Bob"}}, f)
+    monkeypatch.setattr(
+        mod.urllib.request, "urlopen",
+        _fake_urlopen_factory([{"ok": True, "result": {}}, {"ok": True, "result": {}}]))
+
+    status, data = post(base_url, "/api/telegram/test", {"token": "abc123"})
+    assert status == 200
+    assert data["ok"] is True
+
+
+def test_telegram_test_meldet_telegrams_fehlertext(server, monkeypatch):
+    base_url, mod = server
+    with open(mod.TELEGRAM_CHATS_PATH, "w") as f:
+        json.dump({"111": {"name": "Anna"}}, f)
+    monkeypatch.setattr(
+        mod.urllib.request, "urlopen",
+        _fake_urlopen_factory([{"ok": False, "description": "chat not found"}]))
+
+    status, data = post(base_url, "/api/telegram/test", {"token": "abc123"})
+    assert status == 500
+    assert "chat not found" in data["error"]
+
+
 def test_update_verarbeiten_verknuepft_gueltigen_code(galerie_env, monkeypatch):
     mod = galerie_env
     monkeypatch.setattr(mod, "_telegram_sende_nachricht", lambda *a, **k: None)

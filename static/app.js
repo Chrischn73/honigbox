@@ -1,12 +1,13 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.5';
+const APP_VERSION = 'v1.3.6';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
 
 const grid = document.getElementById('galerie-grid');
+const galerieAnzeigeModusSel = document.getElementById('galerie-anzeige-modus');
 const tabFotos = document.getElementById('tab-fotos');
 const tabArchiv = document.getElementById('tab-archiv');
 const alleAuswaehlenCb = document.getElementById('alle-auswaehlen-cb');
@@ -51,6 +52,7 @@ const telegramBotTokenInp = document.getElementById('telegram-bot-token');
 const telegramSpeichernBtn = document.getElementById('telegram-speichern');
 const telegramVerbindenBtn = document.getElementById('telegram-verbinden');
 const telegramVerbindenBoxEl = document.getElementById('telegram-verbinden-box');
+const telegramTestBtn = document.getElementById('telegram-test');
 const telegramChatsListeEl = document.getElementById('telegram-chats-liste');
 const statusRaspiEl = document.getElementById('status-raspi');
 const statusDienstEl = document.getElementById('status-dienst');
@@ -65,6 +67,7 @@ const ansichten = document.querySelectorAll('.ansicht');
 let zeigeArchiv = false;
 let archivNotizen = {};
 let ausgewaehlt = new Set();
+let galerieAnzeigeModus = 'einzelbild';
 let kameraFelder = [];
 let fotoZeitplanFelder = [];
 let pushoverMeldungenSchema = [];
@@ -393,6 +396,149 @@ function oeffneLightbox(startIndex) {
   back.addEventListener('click', schliessen);
   document.body.appendChild(back);
   zeigeIndex(index);
+}
+
+// Zweiter Anzeigemodus (Einstellung "Anzeigeart"): statt Einzelbild mit
+// Pfeilen ein vertikaler Ablauf, der beim angetippten Foto beginnt und nach
+// unten mit den aelteren Fotos weitergeht. Die Liste wird beim Oeffnen
+// eingefroren (Snapshot der Dateinamen) - Archivieren/Loeschen waehrend des
+// Scrollens soll die Indizes der noch nicht geladenen Batches nicht
+// verschieben. Fotos werden per IntersectionObserver batchweise nachgeladen
+// (nicht alle auf einmal ins DOM), damit lange Listen auf dem Handy nicht
+// hunderte volle Bilder gleichzeitig vorhalten.
+const FOTO_FEED_BATCH_GROESSE = 4;
+
+function oeffneFotoFeed(startIndex) {
+  const dateien = aktuelleBilderListe.slice(startIndex);
+
+  const back = document.createElement('div');
+  back.className = 'foto-feed';
+
+  const schliessenBtn = document.createElement('button');
+  schliessenBtn.className = 'foto-feed-schliessen';
+  schliessenBtn.setAttribute('aria-label', 'Schließen');
+  schliessenBtn.textContent = '✕';
+
+  function schliessen() {
+    beobachter.disconnect();
+    back.remove();
+    document.removeEventListener('keydown', tastenHandler);
+  }
+  function tastenHandler(e) {
+    if (e.key === 'Escape') schliessen();
+  }
+  document.addEventListener('keydown', tastenHandler);
+  schliessenBtn.addEventListener('click', schliessen);
+
+  const liste = document.createElement('div');
+  liste.className = 'foto-feed-liste';
+  const sentinel = document.createElement('div');
+  sentinel.className = 'foto-feed-sentinel';
+
+  function fotoEintragErstellen(datei) {
+    const eintrag = document.createElement('figure');
+    eintrag.className = 'foto-feed-eintrag';
+
+    const img = document.createElement('img');
+    img.src = bildUrl(datei);
+    img.alt = datei;
+    img.loading = 'lazy';
+
+    const caption = document.createElement('figcaption');
+    caption.textContent = datei;
+
+    const aktionen = document.createElement('div');
+    aktionen.className = 'foto-feed-aktionen';
+    if (!zeigeArchiv) {
+      const archivBtn = document.createElement('button');
+      archivBtn.className = 'btn btn-sm btn-ghost';
+      archivBtn.textContent = '📦 Archivieren';
+      archivBtn.addEventListener('click', async () => {
+        if (!await bestaetigen(`"${datei}" in Archiv verschieben?`)) return;
+        const res = await fetch('/api/photos/archivieren', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dateien: [datei] }),
+        });
+        if (!res.ok) { toast('Fehler beim Archivieren'); return; }
+        toast('Archiviert');
+        entferneFotoLokal(datei);
+        eintrag.remove();
+      });
+      aktionen.appendChild(archivBtn);
+    }
+    const loeschenBtn = document.createElement('button');
+    loeschenBtn.className = 'btn btn-sm btn-danger';
+    loeschenBtn.textContent = '🗑️ Löschen';
+    loeschenBtn.addEventListener('click', async () => {
+      if (!await bestaetigen(`"${datei}" endgültig löschen?`)) return;
+      const res = await fetch('/api/photos/loeschen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dateien: [datei], archiv: zeigeArchiv }),
+      });
+      if (!res.ok) { toast('Fehler beim Löschen'); return; }
+      toast('Gelöscht');
+      entferneFotoLokal(datei);
+      eintrag.remove();
+    });
+    aktionen.appendChild(loeschenBtn);
+
+    eintrag.append(img, caption, aktionen);
+    return eintrag;
+  }
+
+  let naechsterIndex = 0;
+  function naechsteBatchLaden() {
+    const ende = Math.min(naechsterIndex + FOTO_FEED_BATCH_GROESSE, dateien.length);
+    for (; naechsterIndex < ende; naechsterIndex++) {
+      liste.appendChild(fotoEintragErstellen(dateien[naechsterIndex]));
+    }
+    if (naechsterIndex >= dateien.length) {
+      beobachter.disconnect();
+      sentinel.remove();
+    }
+  }
+
+  const beobachter = new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) naechsteBatchLaden();
+  });
+
+  back.append(schliessenBtn, liste);
+  liste.appendChild(sentinel);
+  document.body.appendChild(back);
+  naechsteBatchLaden();
+  beobachter.observe(sentinel);
+}
+
+async function ladeGalerieAnzeigeModus() {
+  try {
+    const res = await fetch('/api/galerie-anzeige');
+    const data = await res.json();
+    galerieAnzeigeModus = data.modus || 'einzelbild';
+    galerieAnzeigeModusSel.value = galerieAnzeigeModus;
+  } catch {
+    toast('Anzeige-Einstellung konnte nicht geladen werden');
+  }
+}
+
+async function speichereGalerieAnzeigeModus() {
+  try {
+    const res = await fetch('/api/galerie-anzeige', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modus: galerieAnzeigeModusSel.value }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      galerieAnzeigeModus = data.modus;
+      toast('Anzeige-Einstellung gespeichert');
+    } else {
+      toast(data.error || 'Fehler beim Speichern');
+    }
+  } catch {
+    toast('Fehler beim Speichern');
+  }
 }
 
 function aktualisiereAuswahlLeiste() {
@@ -930,6 +1076,28 @@ async function telegramVerbinden() {
   }
 }
 
+async function telegramTestSenden() {
+  telegramTestBtn.disabled = true;
+  toast('Sende Testnachricht…');
+  try {
+    const res = await fetch('/api/telegram/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: telegramBotTokenInp.value }),
+    });
+    if (res.ok) {
+      toast('Testnachricht gesendet – prüfe Telegram');
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast(data.error || 'Test fehlgeschlagen');
+    }
+  } catch {
+    toast('Test fehlgeschlagen');
+  } finally {
+    telegramTestBtn.disabled = false;
+  }
+}
+
 async function telegramTrennen(chatId) {
   if (!await bestaetigen('Diese Telegram-Verbindung trennen?')) return;
   try {
@@ -1199,7 +1367,10 @@ function render(bilder) {
     img.src = vorschauUrl;
     img.alt = datei;
     img.loading = 'lazy';
-    img.addEventListener('click', () => oeffneLightbox(index));
+    img.addEventListener('click', () => {
+      if (galerieAnzeigeModus === 'feed') oeffneFotoFeed(index);
+      else oeffneLightbox(index);
+    });
 
     thumbWrap.append(checkboxZone, img);
 
@@ -1393,6 +1564,7 @@ tuerKontaktSpeichernBtn.addEventListener('click', speichereTuerEinstellungen);
 btnTuerSimulieren.addEventListener('click', tuerSimulieren);
 btnPushoverStumm.addEventListener('click', pushoverStummKlick);
 fotoZeitplanSpeichernBtn.addEventListener('click', speichereFotoZeitplan);
+galerieAnzeigeModusSel.addEventListener('change', speichereGalerieAnzeigeModus);
 fotoZeitplanZuruecksetzenBtn.addEventListener('click', fotoZeitplanZuruecksetzen);
 pushoverSpeichernBtn.addEventListener('click', speicherePushoverEinstellungen);
 pushoverAlleAktivierenBtn.addEventListener('click', () => pushoverAlleSetzen(true));
@@ -1400,6 +1572,7 @@ pushoverAlleDeaktivierenBtn.addEventListener('click', () => pushoverAlleSetzen(f
 pushoverTestBtn.addEventListener('click', pushoverTestSenden);
 telegramSpeichernBtn.addEventListener('click', speichereTelegramEinstellungen);
 telegramVerbindenBtn.addEventListener('click', telegramVerbinden);
+telegramTestBtn.addEventListener('click', telegramTestSenden);
 simDauerSpeichernBtn.addEventListener('click', speichereSimulationDauer);
 speicherOrtSel.addEventListener('change', aktualisiereSpeicherFeldSichtbarkeit);
 speicherUebernehmenBtn.addEventListener('click', speicherUebernehmen);
@@ -1433,6 +1606,7 @@ ladeTelegramEinstellungen();
 ladeSimulationDauer();
 ladeTuerEinstellungen();
 ladeSpeicherEinstellungen();
+ladeGalerieAnzeigeModus();
 laden();
 ladeStatus();
 setInterval(ladeStatus, 5000);
