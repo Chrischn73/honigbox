@@ -41,7 +41,6 @@
         <button class="btn" id="tab-fotos">Aktuelle Fotos</button>
         <button class="btn" id="tab-archiv">Archiv</button>
         <button class="btn btn-primary" id="btn-foto-aufnehmen">📷 Foto aufnehmen</button>
-        <button class="btn btn-ghost" id="btn-foto-testmodus">🔬 Testmodus aktivieren</button>
         <label class="alle-auswahl">
           <input type="checkbox" id="alle-auswaehlen-cb"> Alle auswählen
         </label>
@@ -69,6 +68,13 @@
               <option value="feed">Ablauf zum Scrollen (angetipptes Foto oben, ältere darunter) (Standard)</option>
             </select>
           </div>
+        </div>
+        <div class="kamera-feld-gruppe">Testmodus</div>
+        <p class="muted" style="font-size:.85rem; margin-top:0;">Zeigt beim nächsten Einzelfoto ("📷 Foto aufnehmen" bei
+        den Aufnahmen) zusätzlich die von der Kamera tatsächlich angewandten Werte an - schaltet sich nach 30 Minuten
+        automatisch wieder aus.</p>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-ghost" id="btn-foto-testmodus">🔬 Testmodus aktivieren</button>
         </div>
       </details>
 
