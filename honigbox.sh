@@ -143,7 +143,13 @@ def neustart_angefordert():
 
 
 def run(script, *args):
-    subprocess.run([f"{SCRIPT_DIR}/{script}", *args], check=False)
+    # check=False fängt nur einen Fehler-Exitcode ab, NICHT eine fehlende/nicht
+    # ausfuehrbare Datei (FileNotFoundError/PermissionError) - das wuerde sonst
+    # die Tuerueberwachung abstuerzen lassen, siehe push()-Kommentar oben.
+    try:
+        subprocess.run([f"{SCRIPT_DIR}/{script}", *args], check=False)
+    except OSError as e:
+        print(f"{script} konnte nicht gestartet werden: {e}")
 
 
 def push(meldung_id):
@@ -153,7 +159,14 @@ def push(meldung_id):
     # (curl --retry); ein zweiter, ebenfalls wartender Aufruf wuerde diese
     # Verzoegerung fuer die Tuerueberwachung verdoppeln. Telegram braucht das
     # Ergebnis hier nicht, laeuft also unabhaengig im Hintergrund weiter.
-    subprocess.Popen([f"{SCRIPT_DIR}/send_telegram.sh", meldung_id])
+    # try/except: fehlt/fehlt-ausfuehrbar send_telegram.sh (z.B. direkt nach
+    # einem reinen "Update" ohne erneutes install.sh) darf die Tuerueberwachung
+    # NIE zum Absturz bringen - das fuehrte sonst zu einer Neustart-Schleife
+    # (systemd Restart=on-failure) mit wiederholter "Raspi wurde gestartet"-Meldung.
+    try:
+        subprocess.Popen([f"{SCRIPT_DIR}/send_telegram.sh", meldung_id])
+    except OSError as e:
+        print(f"send_telegram.sh konnte nicht gestartet werden: {e}")
 
 
 def confirm_still_open():
