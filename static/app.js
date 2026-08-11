@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.6';
+const APP_VERSION = 'v1.3.7';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -54,6 +54,7 @@ const telegramVerbindenBtn = document.getElementById('telegram-verbinden');
 const telegramVerbindenBoxEl = document.getElementById('telegram-verbinden-box');
 const telegramTestBtn = document.getElementById('telegram-test');
 const telegramChatsListeEl = document.getElementById('telegram-chats-liste');
+const telegramMeldungenContainer = document.getElementById('telegram-meldungen');
 const statusRaspiEl = document.getElementById('status-raspi');
 const statusDienstEl = document.getElementById('status-dienst');
 const statusTuerEl = document.getElementById('status-tuer');
@@ -994,12 +995,46 @@ function renderTelegramChats(chats) {
   });
 }
 
+let telegramMeldungenSchema = [];
+
+// Nur Checkboxen (kein Text) - der Meldungstext wird gemeinsam mit Pushover
+// gepflegt (renderPushoverMeldungen), hier nur der kanaleigene An/Aus-Schalter.
+function renderTelegramMeldungen(schema, meldungen) {
+  telegramMeldungenSchema = schema;
+  telegramMeldungenContainer.innerHTML = '';
+  schema.forEach(({ id, label }) => {
+    const m = meldungen[id] || { aktiv: true };
+    const zeile = document.createElement('div');
+    zeile.className = 'pushover-zeile';
+    const kopf = document.createElement('label');
+    kopf.className = 'pushover-zeile-kopf';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = `tm-aktiv-${id}`;
+    cb.checked = !!m.aktiv;
+    const kopfText = document.createElement('span');
+    kopfText.textContent = label;
+    kopf.append(cb, kopfText);
+    zeile.appendChild(kopf);
+    telegramMeldungenContainer.appendChild(zeile);
+  });
+}
+
+function sammleTelegramMeldungen() {
+  const meldungen = {};
+  telegramMeldungenSchema.forEach(({ id }) => {
+    meldungen[id] = { aktiv: document.getElementById(`tm-aktiv-${id}`).checked };
+  });
+  return meldungen;
+}
+
 async function ladeTelegramEinstellungen() {
   try {
     const res = await fetch('/api/telegram');
     const data = await res.json();
     telegramAktivInp.checked = data.werte.aktiv !== false;
     telegramBotTokenInp.value = data.werte.bot_token;
+    renderTelegramMeldungen(data.meldungen_schema, data.werte.meldungen);
     renderTelegramChats(data.chats);
     return data.chats;
   } catch {
@@ -1014,12 +1049,17 @@ async function speichereTelegramEinstellungen() {
     const res = await fetch('/api/telegram', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aktiv: telegramAktivInp.checked, bot_token: telegramBotTokenInp.value }),
+      body: JSON.stringify({
+        aktiv: telegramAktivInp.checked,
+        bot_token: telegramBotTokenInp.value,
+        meldungen: sammleTelegramMeldungen(),
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       telegramAktivInp.checked = data.werte.aktiv !== false;
       telegramBotTokenInp.value = data.werte.bot_token;
+      renderTelegramMeldungen(telegramMeldungenSchema, data.werte.meldungen);
       toast(data.warnung || 'Telegram-Einstellungen gespeichert');
     } else {
       toast(data.error || 'Fehler beim Speichern');

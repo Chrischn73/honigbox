@@ -3,9 +3,11 @@
 # (beide werden von honigbox.sh push() aufgerufen, jeweils unabhaengig an/aus).
 # Aufruf: send_telegram.sh <meldung-id>
 #
-# Nutzt bewusst DIESELBEN Meldungstexte/aktiv-Schalter wie Pushover (liest
-# dieselbe .pushover-einstellungen.sh) statt ein eigenes Text-System zu
-# pflegen - "erster Schritt", siehe Notiz in galerie_server.py.
+# Nutzt bewusst DIESELBEN Meldungstexte wie Pushover (liest TEXT_<id> aus
+# .pushover-einstellungen.sh) statt ein eigenes Text-System zu pflegen. Der
+# An/Aus-Schalter pro Meldung (TG_ENABLED_<id>, aus der eigenen
+# .telegram-einstellungen.sh) ist dagegen bewusst getrennt von Pushovers
+# ENABLED_<id> - siehe Notiz in galerie_server.py.
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 TELEGRAM_KONFIG="$DIR/einstellungen/.telegram-einstellungen.sh"
@@ -38,15 +40,19 @@ fi
 
 MELDUNG_ID="$1"
 
-PUSHOVER_KONFIG="$DIR/einstellungen/.pushover-einstellungen.sh"
-[ -f "$PUSHOVER_KONFIG" ] && source "$PUSHOVER_KONFIG"
-ENABLED_VAR="ENABLED_${MELDUNG_ID}"
-TEXT_VAR="TEXT_${MELDUNG_ID}"
-AKTIV="${!ENABLED_VAR:-1}"
+# Eigener Schalter fuer DIESEN Kanal - unabhaengig von Pushovers ENABLED_<id>,
+# damit z.B. "Pi neu gestartet" nur ueber Telegram, der Rest nur ueber
+# Pushover laufen kann. TELEGRAM_KONFIG (oben bereits eingelesen) enthaelt
+# TG_ENABLED_<id> pro Meldung.
+TG_ENABLED_VAR="TG_ENABLED_${MELDUNG_ID}"
+AKTIV="${!TG_ENABLED_VAR:-1}"
 if [ "$AKTIV" = "0" ]; then
   exit 0
 fi
 
+PUSHOVER_KONFIG="$DIR/einstellungen/.pushover-einstellungen.sh"
+[ -f "$PUSHOVER_KONFIG" ] && source "$PUSHOVER_KONFIG"
+TEXT_VAR="TEXT_${MELDUNG_ID}"
 TEXT="${!TEXT_VAR}"
 if [ -z "$TEXT" ]; then
   case "$MELDUNG_ID" in

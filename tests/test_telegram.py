@@ -88,6 +88,60 @@ def test_telegram_einstellungen_speichert_auch_bei_ungueltigem_token(server, mon
     assert data["werte"]["bot_token"] == "falscher-token"
 
 
+def test_telegram_meldungen_standard_alle_aktiv(server):
+    """Ohne vorherigen Save sollen alle Meldungstypen aus PUSHOVER_MELDUNGEN_SCHEMA
+    mit aktiv=True erscheinen - auch bei einer ganz frischen Installation."""
+    base_url, mod = server
+    status, data = get(base_url, "/api/telegram")
+    assert status == 200
+    ids = {s["id"] for s in mod.PUSHOVER_MELDUNGEN_SCHEMA}
+    assert set(data["werte"]["meldungen"].keys()) == ids
+    assert all(m["aktiv"] is True for m in data["werte"]["meldungen"].values())
+    assert data["meldungen_schema"] == mod.PUSHOVER_MELDUNGEN_SCHEMA
+
+
+def test_telegram_meldungen_pro_kanal_getrennt_von_pushover(server):
+    """Kernanforderung: 'boot' nur ueber Telegram, der Rest nur ueber Pushover -
+    beide Kanaele muessen unabhaengig voneinander schaltbar sein."""
+    base_url, mod = server
+    status, data = post(base_url, "/api/pushover", {
+        "token": "", "user": "",
+        "meldungen": {"boot": {"aktiv": False, "text": "Pi an"}, "geoeffnet": {"aktiv": True, "text": "Tür auf"}},
+    })
+    assert status == 200
+    assert data["werte"]["meldungen"]["boot"]["aktiv"] is False
+
+    status, data = post(base_url, "/api/telegram", {
+        "bot_token": "", "aktiv": True,
+        "meldungen": {"boot": {"aktiv": True}, "geoeffnet": {"aktiv": False}},
+    })
+    assert status == 200
+    assert data["werte"]["meldungen"]["boot"]["aktiv"] is True
+    assert data["werte"]["meldungen"]["geoeffnet"]["aktiv"] is False
+
+    status, data = get(base_url, "/api/pushover")
+    assert data["werte"]["meldungen"]["boot"]["aktiv"] is False, "Pushover-Schalter darf von Telegram-Save unberuehrt bleiben"
+
+    with open(mod.TELEGRAM_SHELL_CONF_PATH) as f:
+        conf = f.read()
+    assert "TG_ENABLED_boot='1'" in conf
+    assert "TG_ENABLED_geoeffnet='0'" in conf
+
+    with open(mod.PUSHOVER_SHELL_CONF_PATH) as f:
+        pushover_conf = f.read()
+    assert "ENABLED_boot='0'" in pushover_conf, "Pushovers eigener Schalter muss weiterhin getrennt funktionieren"
+
+
+def test_telegram_meldungen_unvollstaendige_uebergabe_faellt_pro_id_auf_aktiv_zurueck(server):
+    """Fehlt eine Id im POST-Body (z.B. alter Client), soll sie nicht verschwinden,
+    sondern mit aktiv=True (Standard) erhalten bleiben."""
+    base_url, _ = server
+    status, data = post(base_url, "/api/telegram", {"bot_token": "", "meldungen": {"boot": {"aktiv": False}}})
+    assert status == 200
+    assert data["werte"]["meldungen"]["boot"]["aktiv"] is False
+    assert data["werte"]["meldungen"]["geschlossen"]["aktiv"] is True
+
+
 def test_telegram_aktiv_standard_an_und_abschaltbar(server):
     base_url, mod = server
     status, data = get(base_url, "/api/telegram")

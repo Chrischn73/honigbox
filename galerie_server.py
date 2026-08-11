@@ -201,9 +201,11 @@ ALTE_PUSHOVER_CONF_PATH = os.path.join(BASE, "pushover.conf")
 
 # Telegram ist ein zweiter, unabhaengiger Benachrichtigungskanal neben
 # Pushover (beide gleichzeitig aktivierbar) - nutzt bewusst DIESELBEN
-# Meldungstexte/aktiv-Schalter aus PUSHOVER_MELDUNGEN_SCHEMA (siehe unten)
-# statt eines eigenen Text-Systems, um das nicht zu duplizieren ("erster
-# Schritt", kann spaeter erweitert werden). Eigener Bot-Token pro Installation
+# Meldungstexte aus PUSHOVER_MELDUNGEN_SCHEMA (siehe unten), um das nicht zu
+# duplizieren. Der An/Aus-Schalter PRO MELDUNG ist dagegen bewusst getrennt
+# (eigenes "meldungen"-Feld hier, siehe lade_telegram_einstellungen()) - so
+# kann z.B. "Pi neu gestartet" nur ueber Telegram laufen und der Rest nur
+# ueber Pushover. Eigener Bot-Token pro Installation
 # (kein fest eingebauter, gemeinsamer Token) - vermeidet, dass mehrere
 # Installationen sich beim Telegram-getUpdates-Polling gegenseitig die
 # Nachrichten "wegschnappen" (siehe Diskussion 2026-08-10).
@@ -614,13 +616,31 @@ def sende_pushover_test(token, user):
 
 
 def lade_telegram_einstellungen():
-    return _lade_einstellungen_datei(TELEGRAM_EINSTELLUNGEN_PATH, TELEGRAM_STANDARD)
+    """Der 'meldungen'-Teil wird immer komplett gegen PUSHOVER_MELDUNGEN_SCHEMA
+    neu aufgebaut (statt den rohen Datei-Inhalt zurueckzugeben) - damit auch
+    aeltere gespeicherte Dateien ohne dieses Feld sowie spaeter hinzugekommene
+    Meldungs-Typen automatisch mit 'aktiv=True' abgedeckt sind."""
+    werte = _lade_einstellungen_datei(TELEGRAM_EINSTELLUNGEN_PATH, TELEGRAM_STANDARD)
+    gespeichert = werte.get("meldungen") or {}
+    werte["meldungen"] = {
+        schema["id"]: {"aktiv": bool(gespeichert.get(schema["id"], {}).get("aktiv", True))}
+        for schema in PUSHOVER_MELDUNGEN_SCHEMA
+    }
+    return werte
 
 
-def _schreibe_telegram_shell_conf(bot_token, aktiv=True):
+def _schreibe_telegram_shell_conf(bot_token, aktiv, meldungen):
     with open(TELEGRAM_SHELL_CONF_PATH, "w") as f:
         f.write(f"TELEGRAM_BOT_TOKEN={_sh_quote(bot_token)}\n")
         f.write(f"TELEGRAM_AKTIV={_sh_quote('1' if aktiv else '0')}\n")
+        # Eigener Praefix TG_ENABLED_<id> statt ENABLED_<id> - so kollidiert
+        # das nicht mit Pushovers eigenem (getrennten) ENABLED_<id> aus
+        # .pushover-einstellungen.sh, das send_telegram.sh nur noch fuer die
+        # gemeinsamen TEXT_<id>-Variablen einliest.
+        for schema in PUSHOVER_MELDUNGEN_SCHEMA:
+            mid = schema["id"]
+            an = meldungen.get(mid, {}).get("aktiv", True)
+            f.write(f"TG_ENABLED_{mid}={_sh_quote('1' if an else '0')}\n")
 
 
 def telegram_bot_info(token):
@@ -650,16 +670,21 @@ def speichere_telegram_einstellungen(rohdaten):
     trotzdem auffaellt statt sich unbemerkt festzusetzen."""
     token = str(rohdaten.get("bot_token", "")).strip()
     aktiv = bool(rohdaten.get("aktiv", True))
+    roh_meldungen = rohdaten.get("meldungen") or {}
+    meldungen = {
+        schema["id"]: {"aktiv": bool(roh_meldungen.get(schema["id"], {}).get("aktiv", True))}
+        for schema in PUSHOVER_MELDUNGEN_SCHEMA
+    }
     username = ""
     warnung = None
     if token:
         ok, username, fehler = telegram_bot_info(token)
         if not ok:
             warnung = f"Bot-Token konnte nicht bestätigt werden: {fehler}"
-    bereinigt = {"bot_token": token, "bot_username": username, "aktiv": aktiv}
+    bereinigt = {"bot_token": token, "bot_username": username, "aktiv": aktiv, "meldungen": meldungen}
     with open(TELEGRAM_EINSTELLUNGEN_PATH, "w") as f:
         json.dump(bereinigt, f)
-    _schreibe_telegram_shell_conf(token, aktiv)
+    _schreibe_telegram_shell_conf(token, aktiv, meldungen)
     return bereinigt, warnung
 
 
@@ -1286,7 +1311,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/pushover":
             return self._json({"werte": lade_pushover_einstellungen(), "meldungen_schema": PUSHOVER_MELDUNGEN_SCHEMA})
         if path == "/api/telegram":
-            return self._json({"werte": lade_telegram_einstellungen(), "chats": lade_telegram_chats()})
+            return self._json({
+                "werte": lade_telegram_einstellungen(),
+                "chats": lade_telegram_chats(),
+                "meldungen_schema": PUSHOVER_MELDUNGEN_SCHEMA,
+            })
         if path == "/api/status":
             tuer = lade_tuer_status()
             return self._json({
