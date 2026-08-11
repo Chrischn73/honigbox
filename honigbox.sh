@@ -65,17 +65,35 @@ TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-sign
 TUER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-einstellungen.json")
 
 
-def schreibe_status(offen, offen_seit):
+def schreibe_status(offen, offen_seit, letzte_oeffnung):
     """Fuer die Status-Anzeige in der Galerie-Weboberflaeche (siehe /api/status
     in galerie_server.py) - die Galerie liest hier nur, greift nicht selbst
     per GPIO auf den Schalter zu. offen_seit ist der Unix-Zeitstempel, seit dem
     die Tuer ununterbrochen offen ist (None wenn sie gerade zu ist) - damit
-    kann die Weboberflaeche anzeigen, wie lange die Tuer schon offen steht."""
+    kann die Weboberflaeche anzeigen, wie lange die Tuer schon offen steht.
+    letzte_oeffnung ist dagegen ein dauerhafter Zeitstempel (bleibt auch nach
+    dem Schliessen/einem Neustart erhalten), fuer die "letzte Tueroeffnung"-
+    Anzeige."""
     try:
         with open(STATUS_PATH, "w") as f:
-            json.dump({"tuer_offen": offen, "aktualisiert": time.time(), "offen_seit": offen_seit}, f)
+            json.dump({
+                "tuer_offen": offen, "aktualisiert": time.time(),
+                "offen_seit": offen_seit, "letzte_oeffnung": letzte_oeffnung,
+            }, f)
     except OSError:
         pass
+
+
+def _lade_letzte_oeffnung():
+    """Beim Skriptstart (z.B. nach einem Pi-Neustart) den zuletzt bekannten
+    Zeitstempel aus der Status-Datei uebernehmen, statt bei jedem Neustart der
+    Tuerueberwachung wieder bei None anzufangen."""
+    try:
+        with open(STATUS_PATH) as f:
+            wert = json.load(f).get("letzte_oeffnung")
+        return float(wert) if wert else None
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
 
 
 def simulation_aktiv():
@@ -99,6 +117,7 @@ def simulation_aktiv():
 
 
 _tuer_offen_seit = None  # Unix-Zeitstempel, seit dem die Tuer ununterbrochen offen ist (None = zu)
+_letzte_oeffnung = _lade_letzte_oeffnung()  # Unix-Zeitstempel der letzten Oeffnung, ueberlebt Schliessen/Neustart
 
 
 def kontakt_invertiert():
@@ -115,7 +134,7 @@ def kontakt_invertiert():
 
 
 def door_is_open():
-    global _tuer_offen_seit
+    global _tuer_offen_seit, _letzte_oeffnung
     kontakt_bedeutet_offen = door_switch.is_pressed
     if kontakt_invertiert():
         kontakt_bedeutet_offen = not kontakt_bedeutet_offen
@@ -123,9 +142,10 @@ def door_is_open():
     if offen:
         if _tuer_offen_seit is None:
             _tuer_offen_seit = time.time()
+            _letzte_oeffnung = _tuer_offen_seit
     else:
         _tuer_offen_seit = None
-    schreibe_status(offen, _tuer_offen_seit)
+    schreibe_status(offen, _tuer_offen_seit, _letzte_oeffnung)
     return offen
 
 

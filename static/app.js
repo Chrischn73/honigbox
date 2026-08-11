@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.7';
+const APP_VERSION = 'v1.3.8';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -58,6 +58,7 @@ const telegramMeldungenContainer = document.getElementById('telegram-meldungen')
 const statusRaspiEl = document.getElementById('status-raspi');
 const statusDienstEl = document.getElementById('status-dienst');
 const statusTuerEl = document.getElementById('status-tuer');
+const statusLetzteOeffnungEl = document.getElementById('status-letzte-oeffnung');
 const kameraFehltWarnungEl = document.getElementById('kamera-fehlt-warnung');
 const btnPushoverStumm = document.getElementById('btn-pushover-stumm');
 const PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [3, 5, 10, 20, 30];
@@ -208,6 +209,26 @@ function setzeStatusBadge(el, klasse, text) {
   el.textContent = text;
 }
 
+// Kurzform fuers kleine Badge in der Statusleiste + ausfuehrlicher Text fuers
+// title-Tooltip. Bewusst nicht einfach "-" bei allem, was nicht heute war -
+// dass seit Tagen niemand mehr geoeffnet hat, kann ja gerade interessant sein.
+function formatiereLetzteOeffnung(unixSekunden) {
+  if (!unixSekunden) return { kurz: '–', lang: 'Noch keine Türöffnung aufgezeichnet' };
+  const pad = (n) => String(n).padStart(2, '0');
+  const datum = new Date(unixSekunden * 1000);
+  const uhrzeit = `${pad(datum.getHours())}:${pad(datum.getMinutes())}`;
+  const datumLang = `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`;
+
+  const jetzt = new Date();
+  const datumTag = new Date(datum.getFullYear(), datum.getMonth(), datum.getDate());
+  const heuteTag = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate());
+  const tageDiff = Math.round((heuteTag - datumTag) / 86400000);
+
+  if (tageDiff === 0) return { kurz: uhrzeit, lang: `Letzte Türöffnung: heute, ${uhrzeit} Uhr` };
+  if (tageDiff === 1) return { kurz: 'gestern', lang: `Letzte Türöffnung: gestern, ${uhrzeit} Uhr` };
+  return { kurz: `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.`, lang: `Letzte Türöffnung: ${datumLang}, ${uhrzeit} Uhr` };
+}
+
 function aktualisiereStatusAnzeige(daten) {
   // Wenn diese Antwort ueberhaupt ankommt, laeuft der Pi/die Galerie - trivial,
   // aber als explizite Bestaetigung fuer den Nutzer trotzdem hilfreich.
@@ -231,6 +252,10 @@ function aktualisiereStatusAnzeige(daten) {
   } else {
     setzeStatusBadge(statusTuerEl, 'status-ok', '🚪 Tür: zu');
   }
+
+  const { kurz, lang } = formatiereLetzteOeffnung(daten.tuer_letzte_oeffnung);
+  statusLetzteOeffnungEl.textContent = `🕒 ${kurz}`;
+  statusLetzteOeffnungEl.title = lang;
 
   kameraFehltWarnungEl.hidden = daten.kamera_erkannt !== false;
 

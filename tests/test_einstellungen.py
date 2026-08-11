@@ -1,5 +1,6 @@
 """Persistenz und Validierung der Einstellungen (Kamera, Foto-Zeitplan,
 Pushover, Speicherort) ueber die /api/-Endpunkte."""
+import json
 import os
 
 from helpers import get, post
@@ -116,6 +117,26 @@ def test_galerie_anzeige_unbekannter_modus_faellt_auf_standard_zurueck(server):
     status, data = post(base_url, "/api/galerie-anzeige", {"modus": "irgendwas-erfundenes"})
     assert status == 200
     assert data["modus"] == "einzelbild"
+
+
+def test_status_letzte_oeffnung_ohne_statusdatei_ist_none(server):
+    """Frische Installation, honigbox.sh hat noch nie geschrieben."""
+    base_url, _ = server
+    status, data = get(base_url, "/api/status")
+    assert status == 200
+    assert data["tuer_letzte_oeffnung"] is None
+
+
+def test_status_letzte_oeffnung_wird_durchgereicht(server):
+    """honigbox.sh schreibt letzte_oeffnung in .status.json - /api/status muss
+    das 1:1 durchreichen (Formatierung/Anzeige macht das Frontend)."""
+    base_url, mod = server
+    with open(mod.STATUS_PATH, "w") as f:
+        json.dump({"tuer_offen": False, "aktualisiert": 1000.0, "offen_seit": None, "letzte_oeffnung": 900.0}, f)
+
+    status, data = get(base_url, "/api/status")
+    assert status == 200
+    assert data["tuer_letzte_oeffnung"] == 900.0
 
 
 def test_pushover_stumm_mit_gueltiger_dauer(server):

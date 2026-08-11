@@ -1066,10 +1066,11 @@ def lade_tuer_status():
                 "tuer_offen": daten.get("tuer_offen"),
                 "alter_sekunden": round(time.time() - daten.get("aktualisiert", 0), 1),
                 "offen_dauer_sekunden": round(time.time() - offen_seit) if offen_seit else None,
+                "letzte_oeffnung": daten.get("letzte_oeffnung"),
             }
         except (json.JSONDecodeError, OSError, TypeError):
             pass
-    return {"tuer_offen": None, "alter_sekunden": None, "offen_dauer_sekunden": None}
+    return {"tuer_offen": None, "alter_sekunden": None, "offen_dauer_sekunden": None, "letzte_oeffnung": None}
 
 
 def aufraeum_schleife():
@@ -1324,6 +1325,7 @@ class Handler(BaseHTTPRequestHandler):
                 "tuer_offen": tuer["tuer_offen"],
                 "tuer_alter_sekunden": tuer["alter_sekunden"],
                 "tuer_offen_dauer_sekunden": tuer["offen_dauer_sekunden"],
+                "tuer_letzte_oeffnung": tuer["letzte_oeffnung"],
                 "kamera_erkannt": _kamera_erkannt_cache,
                 "pushover_stumm_rest_sekunden": pushover_stumm_rest_sekunden(),
             })
