@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.9';
+const APP_VERSION = 'v1.3.10';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -16,6 +16,8 @@ const btnArchivierenBatch = document.getElementById('btn-archivieren-batch');
 const btnLoeschenBatch = document.getElementById('btn-loeschen-batch');
 const btnAuswahlAufheben = document.getElementById('btn-auswahl-aufheben');
 const btnFotoAufnehmen = document.getElementById('btn-foto-aufnehmen');
+const btnFotoTestmodus = document.getElementById('btn-foto-testmodus');
+const fotoTestErgebnisEl = document.getElementById('foto-test-ergebnis');
 const kameraFelderContainer = document.getElementById('kamera-felder');
 const kameraSpeichernBtn = document.getElementById('kamera-speichern');
 const kameraZuruecksetzenBtn = document.getElementById('kamera-zuruecksetzen');
@@ -266,6 +268,15 @@ function aktualisiereStatusAnzeige(daten) {
   } else {
     btnPushoverStumm.dataset.aktiv = '0';
     btnPushoverStumm.textContent = '🔕 Pushover stummschalten';
+  }
+
+  const testmodusRest = daten.foto_testmodus_rest_sekunden || 0;
+  if (testmodusRest > 0) {
+    btnFotoTestmodus.dataset.aktiv = '1';
+    btnFotoTestmodus.textContent = `🔬 Testmodus beenden (noch ${Math.ceil(testmodusRest / 60)} Min.)`;
+  } else {
+    btnFotoTestmodus.dataset.aktiv = '0';
+    btnFotoTestmodus.textContent = '🔬 Testmodus aktivieren';
   }
 }
 
@@ -1249,7 +1260,12 @@ async function fotoAufnehmen() {
         toast('Foto aufgenommen');
       }
       zeigeArchiv = false;
-      laden();
+      await laden();
+      if (daten.testmodus) {
+        zeigeFotoTestErgebnis(daten);
+      } else {
+        fotoTestErgebnisEl.hidden = true;
+      }
     } else {
       toast('Fehler bei der Aufnahme');
     }
@@ -1258,6 +1274,117 @@ async function fotoAufnehmen() {
   } finally {
     btnFotoAufnehmen.disabled = false;
   }
+}
+
+async function fotoTestmodusUmschalten() {
+  btnFotoTestmodus.disabled = true;
+  const aktivieren = btnFotoTestmodus.dataset.aktiv !== '1';
+  try {
+    const res = await fetch('/api/foto/testmodus', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aktiv: aktivieren }),
+    });
+    if (res.ok) {
+      toast(aktivieren ? 'Testmodus für 30 Minuten aktiviert' : 'Testmodus beendet');
+      if (!aktivieren) fotoTestErgebnisEl.hidden = true;
+      ladeStatus();
+    } else {
+      toast('Fehler beim Umschalten');
+    }
+  } catch {
+    toast('Fehler beim Umschalten');
+  } finally {
+    btnFotoTestmodus.disabled = false;
+  }
+}
+
+// Bei Select-/Checkbox-Feldern den lesbaren Options-Text statt des rohen
+// Werts anzeigen (z.B. "auto" -> "Automatisch") - felder kommt vom Server
+// (KAMERA_FELDER), damit die Label-Zuordnung nicht doppelt gepflegt wird.
+function fotoTestWertAnzeige(felder, key, wert) {
+  const feld = felder.find((f) => f.key === key);
+  if (feld && feld.typ === 'select' && Array.isArray(feld.optionen)) {
+    const opt = feld.optionen.find(([v]) => String(v) === String(wert));
+    if (opt) return opt[1];
+  }
+  if (feld && feld.typ === 'checkbox') return wert ? 'Ja' : 'Nein';
+  return String(wert);
+}
+
+function fotoTestTabelle(zeilen) {
+  const tabelle = document.createElement('table');
+  tabelle.className = 'foto-test-tabelle';
+  zeilen.forEach(([key, wert]) => {
+    const zeile = document.createElement('tr');
+    const zelleKey = document.createElement('td');
+    zelleKey.textContent = key;
+    const zelleWert = document.createElement('td');
+    zelleWert.textContent = wert;
+    zeile.append(zelleKey, zelleWert);
+    tabelle.appendChild(zeile);
+  });
+  return tabelle;
+}
+
+// Metadata kommt roh von rpicam-still (--metadata --metadata-format json) -
+// bewusst KEINE festen Feldnamen erwartet (variiert je libcamera-Version),
+// stattdessen generisch alle Schluessel/Werte anzeigen, die tatsaechlich
+// drinstehen. Manche Versionen liefern ein Array mit einem Eintrag pro Bild
+// statt eines einzelnen Objekts - beides abgedeckt.
+function zeigeFotoTestErgebnis(daten) {
+  fotoTestErgebnisEl.hidden = false;
+  fotoTestErgebnisEl.innerHTML = '';
+
+  const titel = document.createElement('p');
+  titel.innerHTML = '<strong>🔬 Test-Aufnahme</strong>';
+  fotoTestErgebnisEl.appendChild(titel);
+
+  if (daten.geloescht) {
+    const hinweis = document.createElement('p');
+    hinweis.className = 'muted';
+    hinweis.textContent =
+      `Foto war zu dunkel (Helligkeit ${Math.round(daten.helligkeit)}) und wurde automatisch gelöscht – ` +
+      'Kamera-Werte unten trotzdem verfügbar.';
+    fotoTestErgebnisEl.appendChild(hinweis);
+  } else if (aktuelleBilderListe[0]) {
+    const img = document.createElement('img');
+    img.src = bildUrl(aktuelleBilderListe[0]);
+    img.className = 'foto-test-vorschau';
+    img.alt = aktuelleBilderListe[0];
+    fotoTestErgebnisEl.appendChild(img);
+  }
+
+  const metadataRoh = Array.isArray(daten.metadata) ? daten.metadata[0] : daten.metadata;
+  const ueberschrift1 = document.createElement('p');
+  ueberschrift1.innerHTML = '<strong>Tatsächlich angewandte Kamera-Werte</strong>';
+  fotoTestErgebnisEl.appendChild(ueberschrift1);
+  if (metadataRoh && Object.keys(metadataRoh).length) {
+    fotoTestErgebnisEl.appendChild(fotoTestTabelle(
+      Object.entries(metadataRoh).map(([key, wert]) => [
+        key, typeof wert === 'number' ? String(Math.round(wert * 1000) / 1000) : String(wert),
+      ]),
+    ));
+  } else {
+    const hinweis = document.createElement('p');
+    hinweis.className = 'muted';
+    hinweis.textContent = 'Keine Kamera-Metadaten verfügbar (evtl. von dieser rpicam-still-Version nicht unterstützt).';
+    fotoTestErgebnisEl.appendChild(hinweis);
+  }
+
+  const felder = daten.kamera_felder || [];
+  const ueberschrift2 = document.createElement('p');
+  ueberschrift2.innerHTML = '<strong>Konfigurierte Einstellungen</strong>';
+  fotoTestErgebnisEl.appendChild(ueberschrift2);
+  fotoTestErgebnisEl.appendChild(fotoTestTabelle(
+    felder.map((feld) => [feld.label, fotoTestWertAnzeige(felder, feld.key, daten.kamera_werte[feld.key])]),
+  ));
+
+  const schliessenBtn = document.createElement('button');
+  schliessenBtn.className = 'btn btn-sm btn-ghost';
+  schliessenBtn.textContent = 'Schließen';
+  schliessenBtn.addEventListener('click', () => { fotoTestErgebnisEl.hidden = true; });
+  fotoTestErgebnisEl.appendChild(schliessenBtn);
 }
 
 async function tuerSimulieren() {
@@ -1627,6 +1754,7 @@ btnAuswahlAufheben.addEventListener('click', () => {
 btnArchivierenBatch.addEventListener('click', batchArchivieren);
 btnLoeschenBatch.addEventListener('click', batchLoeschen);
 btnFotoAufnehmen.addEventListener('click', fotoAufnehmen);
+btnFotoTestmodus.addEventListener('click', fotoTestmodusUmschalten);
 kameraSpeichernBtn.addEventListener('click', speichereKameraEinstellungen);
 kameraZuruecksetzenBtn.addEventListener('click', kameraZuruecksetzen);
 btnNeustart.addEventListener('click', neustart);

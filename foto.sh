@@ -57,6 +57,13 @@ KAMERA_ARGS=(--datetime -n --width "$BREITE" --height "$HOEHE"
 [ "$HFLIP" = "1" ] && KAMERA_ARGS+=(--hflip)
 [ "$VFLIP" = "1" ] && KAMERA_ARGS+=(--vflip)
 
+# Optionales 1. Argument: Pfad, an den die TATSAECHLICH angewandten Kamera-
+# Werte als JSON geschrieben werden sollen (Foto-Testmodus, siehe
+# /api/foto/einzel in galerie_server.py) - nur bei manuellem Testfoto gesetzt,
+# beim normalen Tueroeffnungs-Zyklus leer und ohne Wirkung/Zusatzaufwand.
+METADATA_PFAD="$1"
+[ -n "$METADATA_PFAD" ] && KAMERA_ARGS+=(--metadata "$METADATA_PFAD" --metadata-format json)
+
 # Fest eingestellter Fokus: kein Autofokus-Suchlauf mehr bei jedem Bild
 # (kalibrieren ueber den Einzelfoto-Button, bis das Bild scharf ist).
 if [ "$FOKUS_MODUS" = "fest" ]; then

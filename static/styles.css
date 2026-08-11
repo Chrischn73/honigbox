@@ -223,6 +223,15 @@ body{
 .foto-feed-aktionen .btn{min-height:38px; padding:.4rem .9rem; font-size:.85rem}
 .foto-feed-sentinel{height:1px}
 
+#foto-test-ergebnis{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+  padding:.9rem 1rem; margin-bottom:1rem}
+#foto-test-ergebnis p{margin:.8rem 0 .4rem}
+#foto-test-ergebnis p:first-child{margin-top:0}
+.foto-test-vorschau{max-width:100%; max-height:40vh; border-radius:8px; display:block; margin:.4rem 0}
+.foto-test-tabelle{width:100%; border-collapse:collapse; font-size:.85rem}
+.foto-test-tabelle td{padding:.3rem .5rem; border-bottom:1px solid var(--line); word-break:break-word}
+.foto-test-tabelle td:first-child{color:var(--ink-soft); white-space:nowrap; padding-right:1rem}
+
 .spenden-trenner{border:none; border-top:2px solid var(--honey); margin:1.5rem 0 0}
 .spenden-box{margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--line); text-align:center}
 .spenden-box p{color:var(--ink-soft); font-size:.85rem; margin:0 0 .6rem}

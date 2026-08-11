@@ -244,6 +244,15 @@ PUSHOVER_STUMM_PATH = os.path.join(EINSTELLUNGEN_DIR, ".pushover-stumm-bis.json"
 PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [3, 5, 10, 20, 30]
 PUSHOVER_STUMM_DAUER_STANDARD_MIN = 5
 
+# Foto-Testmodus: Einzelfoto-Button liefert waehrend dieser Zeit zusaetzlich
+# die von der Kamera TATSAECHLICH angewandten Werte (v.a. bei "Automatisch"-
+# Einstellungen wie Weissabgleich/Fokus/Belichtung interessant) - per
+# --metadata an rpicam-still, siehe foto.sh. Zeitbegrenzt statt Dauerschalter,
+# damit man nicht vergisst, es wieder auszustellen.
+FOTO_TESTMODUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".foto-testmodus-bis.json")
+FOTO_TESTMODUS_DAUER_MIN = 30
+FOTO_TESTMODUS_METADATA_PATH = os.path.join(EINSTELLUNGEN_DIR, ".foto-testmodus-metadata.json")
+
 # Privilegiertes Script fuer den RAM/Platte-Wechsel (siehe speicher_status()/
 # speichere_speicher_einstellungen() weiter unten) - laeuft als root ueber
 # eine gezielte sudoers-Freigabe, siehe install.sh.
@@ -885,6 +894,29 @@ def setze_pushover_stumm(aktiv, dauer_minuten=None):
             pass
 
 
+def foto_testmodus_rest_sekunden():
+    """0, wenn der Testmodus gerade nicht aktiv ist - sonst verbleibende Sekunden."""
+    if not os.path.isfile(FOTO_TESTMODUS_PATH):
+        return 0
+    try:
+        with open(FOTO_TESTMODUS_PATH) as f:
+            bis = json.load(f).get("bis", 0)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return 0
+    return max(0, round(bis - time.time()))
+
+
+def setze_foto_testmodus(aktiv):
+    if aktiv:
+        with open(FOTO_TESTMODUS_PATH, "w") as f:
+            json.dump({"bis": time.time() + FOTO_TESTMODUS_DAUER_MIN * 60}, f)
+    else:
+        try:
+            os.remove(FOTO_TESTMODUS_PATH)
+        except OSError:
+            pass
+
+
 def _system_aktion(cmd):
     """Fuehrt reboot/poweroff synchron aus (beide kehren sofort zurueck, sie
     stossen den Vorgang nur an) und meldet den tatsaechlichen Erfolg zurueck -
@@ -1328,7 +1360,10 @@ class Handler(BaseHTTPRequestHandler):
                 "tuer_letzte_oeffnung": tuer["letzte_oeffnung"],
                 "kamera_erkannt": _kamera_erkannt_cache,
                 "pushover_stumm_rest_sekunden": pushover_stumm_rest_sekunden(),
+                "foto_testmodus_rest_sekunden": foto_testmodus_rest_sekunden(),
             })
+        if path == "/api/foto/testmodus":
+            return self._json({"rest_sekunden": foto_testmodus_rest_sekunden()})
         self._err(404, "Not found")
 
     def api_post(self, path):
@@ -1447,6 +1482,11 @@ class Handler(BaseHTTPRequestHandler):
             setze_pushover_stumm(bool(body.get("aktiv")), body.get("dauer_minuten"))
             return self._json({"ok": True, "rest_sekunden": pushover_stumm_rest_sekunden()})
 
+        if path == "/api/foto/testmodus":
+            body = self._rjson()
+            setze_foto_testmodus(bool(body.get("aktiv")))
+            return self._json({"ok": True, "rest_sekunden": foto_testmodus_rest_sekunden()})
+
         if path == "/api/telegram":
             body = self._rjson()
             bereinigt, warnung = speichere_telegram_einstellungen(body)
@@ -1522,8 +1562,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "dauer_sekunden": dauer})
 
         if path == "/api/foto/einzel":
+            testmodus_aktiv = foto_testmodus_rest_sekunden() > 0
+            befehl = [FOTO_SCRIPT, FOTO_TESTMODUS_METADATA_PATH] if testmodus_aktiv else [FOTO_SCRIPT]
             try:
-                ergebnis = subprocess.run([FOTO_SCRIPT], timeout=30)
+                ergebnis = subprocess.run(befehl, timeout=30)
             except subprocess.TimeoutExpired:
                 return self._err(504, "Zeitueberschreitung bei der Aufnahme")
             except OSError as e:
@@ -1531,7 +1573,22 @@ class Handler(BaseHTTPRequestHandler):
             if ergebnis.returncode != 0:
                 return self._err(500, "Kamera-Skript fehlgeschlagen")
             geloescht, helligkeit = einzelfoto_helligkeit_pruefen()
-            return self._json({"ok": True, "geloescht": geloescht, "helligkeit": helligkeit})
+            antwort = {"ok": True, "geloescht": geloescht, "helligkeit": helligkeit}
+            if testmodus_aktiv:
+                antwort["testmodus"] = True
+                antwort["kamera_werte"] = lade_kamera_einstellungen()
+                antwort["kamera_felder"] = KAMERA_FELDER
+                try:
+                    with open(FOTO_TESTMODUS_METADATA_PATH) as f:
+                        antwort["metadata"] = json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    antwort["metadata"] = None
+                finally:
+                    try:
+                        os.remove(FOTO_TESTMODUS_METADATA_PATH)
+                    except OSError:
+                        pass
+            return self._json(antwort)
 
         self._err(404, "Not found")
 

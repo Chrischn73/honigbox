@@ -3,7 +3,9 @@
 Automatisierte Tests für `galerie_server.py` - gezielt für die Bereiche, in
 denen bei echten Pi-Testrunden schon reale Bugs gefunden wurden: Einstellungen-
 Persistenz, Archivieren/Löschen (inkl. RAM-Disk-Cross-Device-Fall), das
-Notiz-Feld für Archiv-Fotos, und die helligkeitsbasierte Foto-Löschung.
+Notiz-Feld für Archiv-Fotos, die helligkeitsbasierte Foto-Löschung, und der
+Foto-Testmodus (`subprocess.run` gefaked, kein echtes `foto.sh`/rpicam-still
+nötig).
 
 Bewusst **nicht** abgedeckt (zu aufwändig für den Nutzen bei einem
 Ein-Personen-Hobbyprojekt): `honigbox.sh` (Tür-Logik/GPIO), `speicher_umschalten.sh`,

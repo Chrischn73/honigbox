@@ -248,13 +248,17 @@ def dunkle_fotos_aufraeumen(sitzung_start):
             continue
 
 
-def warte_waehrend_offen(gesamt_timeout, eskalationen):
+def warte_waehrend_offen(gesamt_timeout, eskalationen, sofortfoto_erledigt=False):
     """Pollt bis die Tuer zu ist, gesamt_timeout erreicht ist, oder ein
     Neustart des Zyklus angefordert wurde. Macht waehrend die Tuer offen ist
     laufend Fotos nach Zeitplan (bis max_anzahl, zunaechst alle intervall_1
     Sek., ab schwelle_sekunden seltener alle intervall_2 Sek.) und loest die
     in `eskalationen` angegebenen Push-Scripte genau einmal aus, wenn ihr
     Zeitpunkt (Sek. seit Tueroeffnung) erreicht wird.
+    sofortfoto_erledigt=True (nur beim allerersten Aufruf nach einer echten
+    Tueroeffnung, siehe sofortfoto_start()/Hauptschleife) zaehlt das bereits
+    parallel zur Entprellung ausgeloeste erste Foto mit ein, statt bei
+    elapsed=0 sofort ein zweites nachzuschieben.
     Gibt "geschlossen", "timeout" oder "neustart" zurueck."""
     zeitplan = lade_foto_zeitplan()
     intervall_1 = zeitplan["intervall_1"]
@@ -262,8 +266,8 @@ def warte_waehrend_offen(gesamt_timeout, eskalationen):
     intervall_2 = zeitplan["intervall_2"]
     max_anzahl = zeitplan["max_anzahl"]
 
-    anzahl_fotos = 0
-    naechstes_foto = 0
+    anzahl_fotos = 1 if sofortfoto_erledigt else 0
+    naechstes_foto = intervall_1 if sofortfoto_erledigt else 0
     ausgeloest = set()
     elapsed = 0
 
@@ -291,11 +295,13 @@ def warte_waehrend_offen(gesamt_timeout, eskalationen):
     return "geschlossen" if not door_is_open() else "timeout"
 
 
-def behandle_tueroeffnung():
+def behandle_tueroeffnung(sofortfoto_erledigt=False):
     """Deckt eine komplette Tueroeffnung ab (Meldung, Foto-Zeitplan,
     Eskalationen) - startet intern komplett neu, wenn per Simulation bei
     bereits offener Tuer ein Neustart angefordert wird, ohne dass die Tuer
-    dafuer wirklich schliessen muss."""
+    dafuer wirklich schliessen muss. sofortfoto_erledigt gilt (falls True) nur
+    fuer die allererste Runde - ein Neustart per Simulation zaehlt nicht als
+    neues Sofortfoto, siehe warte_waehrend_offen()."""
     while True:
         neustart_angefordert()  # evtl. veraltetes Signal verwerfen, bevor es losgeht
         sitzung_start = time.time()
@@ -308,7 +314,8 @@ def behandle_tueroeffnung():
             (WAIT_ESCALATE_1, "eskalation1"),
             (WAIT_ESCALATE_1 + WAIT_ESCALATE_2, "eskalation2"),
         ]
-        ergebnis = warte_waehrend_offen(WAIT_ESCALATE_1 + WAIT_ESCALATE_2, eskalationen)
+        ergebnis = warte_waehrend_offen(WAIT_ESCALATE_1 + WAIT_ESCALATE_2, eskalationen, sofortfoto_erledigt)
+        sofortfoto_erledigt = False
 
         if ergebnis == "neustart":
             print("Simulation: Türöffnung wird als neu behandelt")
@@ -324,13 +331,36 @@ def behandle_tueroeffnung():
         return
 
 
+def sofortfoto_start():
+    """Feuert das erste Foto EINER Tueroeffnung schon parallel zur
+    Entprellungs-Bestaetigung (WAIT_CONFIRM/confirm_still_open() in der
+    Hauptschleife unten), statt erst danach - die Kamera braucht selbst schon
+    ein bis mehrere Sekunden (Prozessstart, Belichtung/Weissabgleich
+    einschwingen), die sich sonst zur Entprellungs-Wartezeit ADDIEREN statt
+    gleichzeitig zu laufen. Bewusst per Popen (nicht run()/subprocess.run) -
+    blockiert die Tuerueberwachung waehrend der Bestaetigungs-Sleeps nicht.
+    Bei einem falsch bestaetigten Wackelkontakt bleibt im schlimmsten Fall ein
+    einzelnes ueberfluessiges Foto zurueck (in der Galerie loeschbar) - dieser
+    Tausch (schnelleres erstes Echt-Foto gegen dieses seltene Risiko) ist
+    bewusst so gewaehlt, siehe Chat vom 2026-08-11."""
+    try:
+        subprocess.Popen([f"{SCRIPT_DIR}/foto.sh"])
+    except OSError as e:
+        print(f"foto.sh (Sofort-Trigger) konnte nicht gestartet werden: {e}")
+
+
 time.sleep(5)  # 3 Sek. urspruengliche Startverzoegerung + 2 Sek. wie zuvor in push-boot.sh
 push("boot")
 
 while True:
     if door_is_open():
+        # max_anzahl=0 (Nutzer will bei Tueroeffnung explizit KEINE Fotos)
+        # muss auch hier gelten, nicht nur im spaeteren Zeitplan.
+        sofortfoto_erledigt = lade_foto_zeitplan().get("max_anzahl", 0) > 0
+        if sofortfoto_erledigt:
+            sofortfoto_start()
         time.sleep(WAIT_CONFIRM)
         if confirm_still_open():
-            behandle_tueroeffnung()
+            behandle_tueroeffnung(sofortfoto_erledigt)
 
     time.sleep(LOOP_DELAY)
