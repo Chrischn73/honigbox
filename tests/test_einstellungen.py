@@ -95,28 +95,29 @@ def test_tuer_kontakt_invertiert_rundtrip(server):
     assert data["kontakt_invertiert"] is True, "Einstellung wurde nicht dauerhaft gespeichert"
 
 
-def test_galerie_anzeige_standard_einzelbild(server):
+def test_galerie_anzeige_standard_feed(server):
+    """Standard seit 2026-08-11 bewusst auf 'feed' geaendert (Nutzerwunsch)."""
     base_url, _ = server
     status, data = get(base_url, "/api/galerie-anzeige")
     assert status == 200
-    assert data["modus"] == "einzelbild"
+    assert data["modus"] == "feed"
 
 
 def test_galerie_anzeige_rundtrip(server):
     base_url, _ = server
-    status, data = post(base_url, "/api/galerie-anzeige", {"modus": "feed"})
+    status, data = post(base_url, "/api/galerie-anzeige", {"modus": "einzelbild"})
     assert status == 200
-    assert data["modus"] == "feed"
+    assert data["modus"] == "einzelbild"
 
     status, data = get(base_url, "/api/galerie-anzeige")
-    assert data["modus"] == "feed", "Einstellung wurde nicht dauerhaft gespeichert"
+    assert data["modus"] == "einzelbild", "Einstellung wurde nicht dauerhaft gespeichert"
 
 
 def test_galerie_anzeige_unbekannter_modus_faellt_auf_standard_zurueck(server):
     base_url, _ = server
     status, data = post(base_url, "/api/galerie-anzeige", {"modus": "irgendwas-erfundenes"})
     assert status == 200
-    assert data["modus"] == "einzelbild"
+    assert data["modus"] == "feed"
 
 
 def test_status_letzte_oeffnung_ohne_statusdatei_ist_none(server):

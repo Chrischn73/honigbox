@@ -233,7 +233,7 @@ TUER_EINSTELLUNGEN_STANDARD = {"kontakt_invertiert": False}
 
 GALERIE_ANZEIGE_PATH = os.path.join(EINSTELLUNGEN_DIR, ".galerie-anzeige.json")
 GALERIE_ANZEIGE_MODI = ("einzelbild", "feed")
-GALERIE_ANZEIGE_STANDARD = {"modus": "einzelbild"}
+GALERIE_ANZEIGE_STANDARD = {"modus": "feed"}
 
 SPEICHER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".speicher-einstellungen.json")
 SIMULATION_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".simulation-einstellungen.json")
