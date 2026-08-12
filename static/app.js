@@ -1,13 +1,17 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.11';
+const APP_VERSION = 'v1.3.12';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
 
 const grid = document.getElementById('galerie-grid');
 const galerieAnzeigeModusSel = document.getElementById('galerie-anzeige-modus');
+const externLinkAktivInp = document.getElementById('extern-link-aktiv');
+const externLinkUrlInp = document.getElementById('extern-link-url');
+const externLinkSpeichernBtn = document.getElementById('extern-link-speichern');
+const btnExternLink = document.getElementById('btn-extern-link');
 const tabFotos = document.getElementById('tab-fotos');
 const tabArchiv = document.getElementById('tab-archiv');
 const alleAuswaehlenCb = document.getElementById('alle-auswaehlen-cb');
@@ -582,6 +586,51 @@ async function speichereGalerieAnzeigeModus() {
     }
   } catch {
     toast('Fehler beim Speichern');
+  }
+}
+
+function aktualisiereExternLinkButton(werte) {
+  if (werte.aktiv && werte.url) {
+    btnExternLink.href = werte.url;
+    btnExternLink.hidden = false;
+  } else {
+    btnExternLink.hidden = true;
+  }
+}
+
+async function ladeExternLink() {
+  try {
+    const res = await fetch('/api/extern-link');
+    const data = await res.json();
+    externLinkAktivInp.checked = !!data.aktiv;
+    externLinkUrlInp.value = data.url || '';
+    aktualisiereExternLinkButton(data);
+  } catch {
+    toast('Externer-Link-Einstellung konnte nicht geladen werden');
+  }
+}
+
+async function speichereExternLink() {
+  externLinkSpeichernBtn.disabled = true;
+  try {
+    const res = await fetch('/api/extern-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aktiv: externLinkAktivInp.checked, url: externLinkUrlInp.value }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      externLinkAktivInp.checked = !!data.aktiv;
+      externLinkUrlInp.value = data.url || '';
+      aktualisiereExternLinkButton(data);
+      toast('Gespeichert');
+    } else {
+      toast(data.error || 'Fehler beim Speichern');
+    }
+  } catch {
+    toast('Fehler beim Speichern');
+  } finally {
+    externLinkSpeichernBtn.disabled = false;
   }
 }
 
@@ -1765,6 +1814,7 @@ btnTuerSimulieren.addEventListener('click', tuerSimulieren);
 btnPushoverStumm.addEventListener('click', pushoverStummKlick);
 fotoZeitplanSpeichernBtn.addEventListener('click', speichereFotoZeitplan);
 galerieAnzeigeModusSel.addEventListener('change', speichereGalerieAnzeigeModus);
+externLinkSpeichernBtn.addEventListener('click', speichereExternLink);
 fotoZeitplanZuruecksetzenBtn.addEventListener('click', fotoZeitplanZuruecksetzen);
 pushoverSpeichernBtn.addEventListener('click', speicherePushoverEinstellungen);
 pushoverAlleAktivierenBtn.addEventListener('click', () => pushoverAlleSetzen(true));
@@ -1807,6 +1857,7 @@ ladeSimulationDauer();
 ladeTuerEinstellungen();
 ladeSpeicherEinstellungen();
 ladeGalerieAnzeigeModus();
+ladeExternLink();
 laden();
 ladeStatus();
 setInterval(ladeStatus, 5000);

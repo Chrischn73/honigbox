@@ -41,6 +41,7 @@
         <button class="btn" id="tab-fotos">Aktuelle Fotos</button>
         <button class="btn" id="tab-archiv">Archiv</button>
         <button class="btn btn-primary" id="btn-foto-aufnehmen">📷 Foto aufnehmen</button>
+        <a class="btn btn-ghost" id="btn-extern-link" href="#" target="_blank" rel="noopener" hidden>🐝 Verkauf erfassen</a>
         <label class="alle-auswahl">
           <input type="checkbox" id="alle-auswaehlen-cb"> Alle auswählen
         </label>
@@ -273,6 +274,25 @@
         </ol>
         <p class="muted" style="font-size:.85rem;">Mehrere Personen (z. B. der ganze Haushalt) können sich
         unabhängig voneinander mit demselben Bot verbinden und bekommen dann alle Benachrichtigungen.</p>
+      </details>
+
+      <details class="kamera-details">
+        <summary>🔗 Externer Link</summary>
+        <p class="muted" style="font-size:.85rem; margin-top:0;">Blendet bei den Aufnahmen einen Button ein, der eine
+        frei wählbare Adresse in einem neuen Tab öffnet - z. B. die "Erfassen"-Seite der Imkerei-App.</p>
+        <div class="kamera-feld checkbox-feld">
+          <label for="extern-link-aktiv">Button anzeigen</label>
+          <input type="checkbox" id="extern-link-aktiv">
+        </div>
+        <div class="kamera-felder">
+          <div class="kamera-feld">
+            <label for="extern-link-url">Adresse (URL)</label>
+            <input type="text" id="extern-link-url" placeholder="http://192.168.155.198:8090/">
+          </div>
+        </div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="extern-link-speichern">Speichern</button>
+        </div>
       </details>
 
       <details class="kamera-details system-details">

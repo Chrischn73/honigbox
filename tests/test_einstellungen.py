@@ -140,6 +140,33 @@ def test_status_letzte_oeffnung_wird_durchgereicht(server):
     assert data["tuer_letzte_oeffnung"] == 900.0
 
 
+def test_extern_link_standard_aus(server):
+    base_url, _ = server
+    status, data = get(base_url, "/api/extern-link")
+    assert status == 200
+    assert data["aktiv"] is False
+    assert data["url"] == ""
+
+
+def test_extern_link_rundtrip(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/extern-link", {"aktiv": True, "url": "http://192.168.155.198:8090/"})
+    assert status == 200
+    assert data["aktiv"] is True
+    assert data["url"] == "http://192.168.155.198:8090/"
+
+    status, data = get(base_url, "/api/extern-link")
+    assert data["aktiv"] is True
+    assert data["url"] == "http://192.168.155.198:8090/", "Einstellung wurde nicht dauerhaft gespeichert"
+
+
+def test_extern_link_lehnt_nicht_http_url_ab(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/extern-link", {"aktiv": True, "url": "javascript:alert(1)"})
+    assert status == 400
+    assert "http" in data["error"]
+
+
 def test_pushover_stumm_mit_gueltiger_dauer(server):
     base_url, _ = server
     status, data = post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 10})

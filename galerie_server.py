@@ -235,6 +235,12 @@ GALERIE_ANZEIGE_PATH = os.path.join(EINSTELLUNGEN_DIR, ".galerie-anzeige.json")
 GALERIE_ANZEIGE_MODI = ("einzelbild", "feed")
 GALERIE_ANZEIGE_STANDARD = {"modus": "feed"}
 
+# Optionaler Button bei den Aufnahmen, der zu einer frei einstellbaren externen
+# Seite verlinkt (z.B. zur "Erfassen"-Seite der BeeTown-Imkerei-App) - oeffnet
+# in einem neuen Tab, damit die HonigBox-Seite nicht verloren geht.
+EXTERN_LINK_PATH = os.path.join(EINSTELLUNGEN_DIR, ".extern-link.json")
+EXTERN_LINK_STANDARD = {"aktiv": False, "url": ""}
+
 SPEICHER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".speicher-einstellungen.json")
 SIMULATION_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".simulation-einstellungen.json")
 SIMULATION_DAUER_STANDARD_SEK = 120
@@ -997,6 +1003,24 @@ def speichere_galerie_anzeige(modus):
     return werte
 
 
+def lade_extern_link():
+    return _lade_einstellungen_datei(EXTERN_LINK_PATH, EXTERN_LINK_STANDARD)
+
+
+def speichere_extern_link(rohdaten):
+    """Nur http(s)-URLs erlaubt - verhindert z.B. ein versehentlich
+    eingetragenes 'javascript:...' (wuerde beim Klick im Seiten-Kontext
+    ausgefuehrt, da der Button die URL direkt als href setzt)."""
+    aktiv = bool(rohdaten.get("aktiv", False))
+    url = str(rohdaten.get("url", "")).strip()
+    if url and not (url.startswith("http://") or url.startswith("https://")):
+        raise ValueError("Link muss mit http:// oder https:// beginnen")
+    werte = {"aktiv": aktiv, "url": url}
+    with open(EXTERN_LINK_PATH, "w") as f:
+        json.dump(werte, f)
+    return werte
+
+
 def lade_speicher_einstellungen():
     standard = {"speicherort": "ram", "ram_groesse_mb": empfohlene_ram_groesse_mb()}
     return _lade_einstellungen_datei(SPEICHER_EINSTELLUNGEN_PATH, standard)
@@ -1335,6 +1359,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(lade_tuer_einstellungen())
         if path == "/api/galerie-anzeige":
             return self._json(lade_galerie_anzeige())
+        if path == "/api/extern-link":
+            return self._json(lade_extern_link())
         if path == "/api/speicher":
             return self._json(speicher_status())
         if path == "/api/kamera":
@@ -1428,6 +1454,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/galerie-anzeige":
             body = self._rjson()
             werte = speichere_galerie_anzeige(str(body.get("modus", "")).strip())
+            return self._json({"ok": True, **werte})
+
+        if path == "/api/extern-link":
+            body = self._rjson()
+            try:
+                werte = speichere_extern_link(body)
+            except ValueError as e:
+                return self._err(400, str(e))
             return self._json({"ok": True, **werte})
 
         if path == "/api/speicher":
