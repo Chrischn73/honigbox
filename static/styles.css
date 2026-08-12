@@ -13,7 +13,7 @@
 
 :root[data-theme="dark"]{
   color-scheme: dark;
-  --bg:#15120d; --surface:#211c15; --ink:#efe7d8; --ink-soft:#b0a48d; --line:#352d22;
+  --bg:#15120d; --surface:#211c15; --ink:#efe7d8; --ink-soft:#b0a48d; --line:#473b26;
   --honey:#eaa92a; --honey-dark:#c9901a; --comb:#0e0c08;
   --danger:#ff6b6b; --ok:#51cf66; --warn:#ffa94d;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.45);
@@ -23,7 +23,7 @@
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme: dark;
-    --bg:#15120d; --surface:#211c15; --ink:#efe7d8; --ink-soft:#b0a48d; --line:#352d22;
+    --bg:#15120d; --surface:#211c15; --ink:#efe7d8; --ink-soft:#b0a48d; --line:#473b26;
     --honey:#eaa92a; --honey-dark:#c9901a; --comb:#0e0c08;
     --danger:#ff6b6b; --ok:#51cf66; --warn:#ffa94d;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.45);
@@ -87,7 +87,12 @@ body{
 .alle-auswahl input{width:20px; height:20px}
 
 .kamera-details{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
-  padding:.7rem .9rem; margin-bottom:1rem}
+  padding:.7rem .9rem; margin-bottom:1.2rem; box-shadow:var(--shadow)}
+.kamera-details[open]{border-color:var(--honey-dark)}
+:root[data-theme="dark"] .kamera-details[open]{border-color:var(--honey)}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .kamera-details[open]{border-color:var(--honey)}
+}
 .kamera-details summary{cursor:pointer; font-weight:650; font-size:.95rem; padding:.3rem 0}
 .kamera-felder{display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:.8rem; margin:.9rem 0}
 .kamera-feld{display:flex; flex-direction:column; gap:.3rem}
