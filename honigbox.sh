@@ -52,8 +52,12 @@ LOOP_DELAY = 1           # Sek. zwischen Durchlaeufen der Hauptschleife
 LOOP_TICK = 1            # Sek. zwischen Pruefungen waehrend die Tuer offen ist
 
 FOTO_ZEITPLAN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".foto-zeitplan.json")
+# Feldnamen muessen mit FOTO_ZEITPLAN_STANDARD in galerie_server.py identisch
+# sein (dort auch die Migration vom fruaheren zwei-stufigen Schema).
 FOTO_ZEITPLAN_STANDARD = {
-    "intervall_1": 3, "schwelle_sekunden": 60, "intervall_2": 15, "max_anzahl": 30,
+    "phase1_dauer_sekunden": 60, "phase1_intervall_sekunden": 3,
+    "phase2_dauer_sekunden": 60, "phase2_intervall_sekunden": 8,
+    "intervall_danach_sekunden": 15, "max_anzahl": 30,
     "aufbewahrungstage": 30, "dunkle_fotos_loeschen": False, "helligkeitsschwelle": 25,
 }
 
@@ -251,23 +255,27 @@ def dunkle_fotos_aufraeumen(sitzung_start):
 def warte_waehrend_offen(gesamt_timeout, eskalationen, sofortfoto_erledigt=False):
     """Pollt bis die Tuer zu ist, gesamt_timeout erreicht ist, oder ein
     Neustart des Zyklus angefordert wurde. Macht waehrend die Tuer offen ist
-    laufend Fotos nach Zeitplan (bis max_anzahl, zunaechst alle intervall_1
-    Sek., ab schwelle_sekunden seltener alle intervall_2 Sek.) und loest die
-    in `eskalationen` angegebenen Push-Scripte genau einmal aus, wenn ihr
-    Zeitpunkt (Sek. seit Tueroeffnung) erreicht wird.
+    laufend Fotos nach einem DREI-stufigen Zeitplan (bis max_anzahl): erst
+    phase1_dauer_sekunden lang alle phase1_intervall_sekunden, danach weitere
+    phase2_dauer_sekunden lang alle phase2_intervall_sekunden, danach alle
+    intervall_danach_sekunden. Loest ausserdem die in `eskalationen`
+    angegebenen Push-Scripte genau einmal aus, wenn ihr Zeitpunkt (Sek. seit
+    Tueroeffnung) erreicht wird.
     sofortfoto_erledigt=True (nur beim allerersten Aufruf nach einer echten
     Tueroeffnung, siehe sofortfoto_start()/Hauptschleife) zaehlt das bereits
     parallel zur Entprellung ausgeloeste erste Foto mit ein, statt bei
     elapsed=0 sofort ein zweites nachzuschieben.
     Gibt "geschlossen", "timeout" oder "neustart" zurueck."""
     zeitplan = lade_foto_zeitplan()
-    intervall_1 = zeitplan["intervall_1"]
-    schwelle = zeitplan["schwelle_sekunden"]
-    intervall_2 = zeitplan["intervall_2"]
+    phase1_intervall = zeitplan["phase1_intervall_sekunden"]
+    phase1_dauer = zeitplan["phase1_dauer_sekunden"]
+    phase2_intervall = zeitplan["phase2_intervall_sekunden"]
+    phase2_dauer = zeitplan["phase2_dauer_sekunden"]
+    intervall_danach = zeitplan["intervall_danach_sekunden"]
     max_anzahl = zeitplan["max_anzahl"]
 
     anzahl_fotos = 1 if sofortfoto_erledigt else 0
-    naechstes_foto = intervall_1 if sofortfoto_erledigt else 0
+    naechstes_foto = phase1_intervall if sofortfoto_erledigt else 0
     ausgeloest = set()
     elapsed = 0
 
@@ -281,7 +289,12 @@ def warte_waehrend_offen(gesamt_timeout, eskalationen, sofortfoto_erledigt=False
         if anzahl_fotos < max_anzahl and elapsed >= naechstes_foto:
             run("foto.sh")
             anzahl_fotos += 1
-            aktuelles_intervall = intervall_1 if elapsed < schwelle else intervall_2
+            if elapsed < phase1_dauer:
+                aktuelles_intervall = phase1_intervall
+            elif elapsed < phase1_dauer + phase2_dauer:
+                aktuelles_intervall = phase2_intervall
+            else:
+                aktuelles_intervall = intervall_danach
             naechstes_foto = elapsed + aktuelles_intervall
 
         for zeitpunkt, meldung_id in eskalationen:

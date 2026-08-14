@@ -121,6 +121,45 @@ FOTO_ZEITPLAN_PATH = os.environ.get(
 )
 _migriere_alte_einstellungsdatei(os.path.join(BILDER_DIR, ".foto-zeitplan.json"), FOTO_ZEITPLAN_PATH)
 
+
+def _migriere_foto_zeitplan_felder():
+    """Umbenennung 2026-08-14 (zwei-stufiger -> drei-stufiger Zeitplan):
+    intervall_1/schwelle_sekunden/intervall_2 -> phase1_intervall_sekunden/
+    phase1_dauer_sekunden/intervall_danach_sekunden. Uebernimmt bestehende
+    Werte unter den neuen Namen - ohne das wuerde der alte 'intervall_2'
+    (das bisherige Intervall NACH der Schwelle) sonst unter dem neuen Feld
+    gleichen Namens (jetzt: Intervall waehrend PHASE 2) landen und dort
+    faelschlich weiterverwendet."""
+    if not os.path.isfile(FOTO_ZEITPLAN_PATH):
+        return
+    try:
+        with open(FOTO_ZEITPLAN_PATH) as f:
+            daten = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return
+    umbenennungen = {
+        "intervall_1": "phase1_intervall_sekunden",
+        "schwelle_sekunden": "phase1_dauer_sekunden",
+        "intervall_2": "intervall_danach_sekunden",
+    }
+    geaendert = False
+    for alt, neu in umbenennungen.items():
+        if alt not in daten:
+            continue
+        if neu not in daten:
+            daten[neu] = daten[alt]
+        del daten[alt]
+        geaendert = True
+    if geaendert:
+        try:
+            with open(FOTO_ZEITPLAN_PATH, "w") as f:
+                json.dump(daten, f)
+        except OSError:
+            pass
+
+
+_migriere_foto_zeitplan_felder()
+
 GRUPPE_AUFNAHME = "Aufnahme-Zeitplan (während die Tür offen ist)"
 GRUPPE_AUFRAEUMEN = "Aufräumen"
 
@@ -129,14 +168,20 @@ GRUPPE_AUFRAEUMEN = "Aufräumen"
 # dunkle Fotos) - fruehere Versionen hatten das ueber drei verschiedene Orte
 # verteilt (Kamera-Einstellungen, ein eigenes "Aufbewahrung"-Feld, hier),
 # jetzt an einem Ort. "gruppe" steuert nur die Unterueberschrift im Frontend.
+# Drei-stufiger Zeitplan (Phase 1 -> Phase 2 -> danach), siehe
+# _migriere_foto_zeitplan_felder() fuer die Umbenennung vom frueheren
+# zwei-stufigen Schema.
 FOTO_ZEITPLAN_FELDER = [
-    {"key": "intervall_1", "typ": "zahl", "label": "Foto-Intervall (Sekunden)", "min": 1, "max": 600, "step": 1,
-     "gruppe": GRUPPE_AUFNAHME},
-    {"key": "schwelle_sekunden", "typ": "zahl",
-     "label": "Nach wie vielen Sekunden seltener fotografieren", "min": 1, "max": 3600, "step": 1,
-     "gruppe": GRUPPE_AUFNAHME},
-    {"key": "intervall_2", "typ": "zahl", "label": "Foto-Intervall danach (Sekunden)", "min": 1, "max": 3600, "step": 1,
-     "gruppe": GRUPPE_AUFNAHME},
+    {"key": "phase1_dauer_sekunden", "typ": "zahl", "label": "Phase 1: Dauer (Sekunden)",
+     "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
+    {"key": "phase1_intervall_sekunden", "typ": "zahl", "label": "Phase 1: Foto-Intervall (Sekunden)",
+     "min": 1, "max": 600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
+    {"key": "phase2_dauer_sekunden", "typ": "zahl", "label": "Phase 2: weitere Dauer (Sekunden)",
+     "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
+    {"key": "phase2_intervall_sekunden", "typ": "zahl", "label": "Phase 2: Foto-Intervall (Sekunden)",
+     "min": 1, "max": 600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
+    {"key": "intervall_danach_sekunden", "typ": "zahl", "label": "Danach: Foto-Intervall (Sekunden)",
+     "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
     {"key": "max_anzahl", "typ": "zahl", "label": "Maximale Anzahl Fotos pro Türöffnung", "min": 1, "max": 500, "step": 1,
      "gruppe": GRUPPE_AUFNAHME},
     {"key": "aufbewahrungstage", "typ": "zahl", "label": "Fotos automatisch löschen nach (Tage, 0 = nie)",
@@ -148,7 +193,9 @@ FOTO_ZEITPLAN_FELDER = [
      "gruppe": GRUPPE_AUFRAEUMEN},
 ]
 FOTO_ZEITPLAN_STANDARD = {
-    "intervall_1": 3, "schwelle_sekunden": 60, "intervall_2": 15, "max_anzahl": 30,
+    "phase1_dauer_sekunden": 60, "phase1_intervall_sekunden": 3,
+    "phase2_dauer_sekunden": 60, "phase2_intervall_sekunden": 8,
+    "intervall_danach_sekunden": 15, "max_anzahl": 30,
     "aufbewahrungstage": 30, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 25,
 }
 

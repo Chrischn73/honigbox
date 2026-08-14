@@ -41,6 +41,49 @@ def test_foto_zeitplan_helligkeitsschwelle_wird_auf_erlaubten_bereich_geklemmt(s
     assert data["werte"]["helligkeitsschwelle"] == feld["min"]
 
 
+def test_foto_zeitplan_phase2_felder_haben_standardwerte(server):
+    """Regressionstest: seit 2026-08-14 dreistufiger Zeitplan (Phase 1 -> Phase
+    2 -> danach) statt zweistufig - die neuen Phase-2-Felder muessen auch ohne
+    vorherige Speicherung sinnvolle Standardwerte liefern."""
+    base_url, _ = server
+    status, data = get(base_url, "/api/foto-zeitplan")
+    assert status == 200
+    assert data["werte"]["phase1_intervall_sekunden"] == 3
+    assert data["werte"]["phase1_dauer_sekunden"] == 60
+    assert data["werte"]["phase2_intervall_sekunden"] == 8
+    assert data["werte"]["phase2_dauer_sekunden"] == 60
+    assert data["werte"]["intervall_danach_sekunden"] == 15
+
+
+def test_foto_zeitplan_migration_alter_zweistufiger_feldnamen(galerie_env):
+    """Regressionstest fuer die Umbenennung intervall_1/schwelle_sekunden/
+    intervall_2 -> phase1_intervall_sekunden/phase1_dauer_sekunden/
+    intervall_danach_sekunden - bestehende Werte muessen erhalten bleiben,
+    NICHT unter dem neuen (andersbedeutenden) Feld 'intervall_2' (jetzt Phase 2)
+    landen."""
+    mod = galerie_env
+    legacy_pfad = os.path.join(os.path.dirname(mod.FOTO_ZEITPLAN_PATH), "legacy-foto-zeitplan.json")
+    with open(legacy_pfad, "w") as f:
+        json.dump({"intervall_1": 5, "schwelle_sekunden": 90, "intervall_2": 20, "max_anzahl": 40}, f)
+
+    original_pfad = mod.FOTO_ZEITPLAN_PATH
+    mod.FOTO_ZEITPLAN_PATH = legacy_pfad
+    try:
+        mod._migriere_foto_zeitplan_felder()
+        with open(legacy_pfad) as f:
+            migriert = json.load(f)
+    finally:
+        mod.FOTO_ZEITPLAN_PATH = original_pfad
+
+    assert migriert["phase1_intervall_sekunden"] == 5
+    assert migriert["phase1_dauer_sekunden"] == 90
+    assert migriert["intervall_danach_sekunden"] == 20
+    assert migriert["max_anzahl"] == 40
+    assert "intervall_1" not in migriert
+    assert "schwelle_sekunden" not in migriert
+    assert "intervall_2" not in migriert
+
+
 def test_pushover_einstellungen_rundtrip(server):
     base_url, _ = server
     status, data = post(base_url, "/api/pushover", {"token": "abc123", "user": "xyz789"})
