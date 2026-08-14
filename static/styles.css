@@ -46,6 +46,8 @@ body{
   background:var(--comb); color:#fff;
   padding:calc(.7rem + var(--safe-top)) 1rem .7rem;
 }
+.topbar-datum{position:absolute; top:calc(.7rem + var(--safe-top)); right:1rem;
+  font-size:.8rem; font-weight:600; color:rgba(255,255,255,.85); white-space:nowrap}
 .topbar-setup-btn{margin-left:auto; display:inline-flex; align-items:center; gap:.3rem;
   padding:.45rem .8rem; border-radius:999px; font-size:.8rem; font-weight:600;
   background:rgba(255,255,255,.12); color:#fff; text-decoration:none; white-space:nowrap}

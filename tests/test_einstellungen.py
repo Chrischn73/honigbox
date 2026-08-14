@@ -146,18 +146,29 @@ def test_extern_link_standard_aus(server):
     assert status == 200
     assert data["aktiv"] is False
     assert data["url"] == ""
+    assert data["label"] == "🐝 Verkauf erfassen"
 
 
 def test_extern_link_rundtrip(server):
     base_url, _ = server
-    status, data = post(base_url, "/api/extern-link", {"aktiv": True, "url": "http://192.168.155.198:8090/"})
+    status, data = post(base_url, "/api/extern-link",
+                         {"aktiv": True, "url": "http://192.168.155.198:8090/", "label": "🍯 Zum Verkauf"})
     assert status == 200
     assert data["aktiv"] is True
     assert data["url"] == "http://192.168.155.198:8090/"
+    assert data["label"] == "🍯 Zum Verkauf"
 
     status, data = get(base_url, "/api/extern-link")
     assert data["aktiv"] is True
     assert data["url"] == "http://192.168.155.198:8090/", "Einstellung wurde nicht dauerhaft gespeichert"
+    assert data["label"] == "🍯 Zum Verkauf"
+
+
+def test_extern_link_leerer_name_faellt_auf_standard_zurueck(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/extern-link", {"aktiv": True, "url": "", "label": "   "})
+    assert status == 200
+    assert data["label"] == "🐝 Verkauf erfassen"
 
 
 def test_extern_link_lehnt_nicht_http_url_ab(server):

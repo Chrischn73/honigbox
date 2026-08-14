@@ -17,6 +17,7 @@
         by <img src="./imkerei-logo.jpeg" alt="Imkerei Frerichs" class="topbar-logo">
       </div>
     </div>
+    <span id="topbar-datum" class="topbar-datum"></span>
     <a class="topbar-setup-btn" id="link-setup-seite" href="#">⚙️ Setup / Update / Backup</a>
   </header>
 
@@ -28,7 +29,7 @@
   </div>
   <p class="warnhinweis" id="kamera-fehlt-warnung" hidden>⚠️ Keine Kamera erkannt – bitte Anschluss prüfen (siehe „❓ Hilfe“ in den Einstellungen).</p>
 
-  <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm" style="margin:0 1rem .8rem">🔕 Pushover stummschalten</button>
+  <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm" style="margin:0 1rem .8rem">🔕 Messenger stumm</button>
 
   <nav class="haupt-tabs">
     <button class="haupt-tab-btn" id="haupt-tab-fotos" data-ansicht="fotos">📷 Aufnahmen</button>
@@ -285,6 +286,10 @@
           <input type="checkbox" id="extern-link-aktiv">
         </div>
         <div class="kamera-felder">
+          <div class="kamera-feld">
+            <label for="extern-link-label">Name (Button-Text)</label>
+            <input type="text" id="extern-link-label" placeholder="🐝 Verkauf erfassen">
+          </div>
           <div class="kamera-feld">
             <label for="extern-link-url">Adresse (URL)</label>
             <input type="text" id="extern-link-url" placeholder="http://192.168.155.198:8090/">

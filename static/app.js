@@ -1,14 +1,24 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.12';
+const APP_VERSION = 'v1.3.13';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
 
+const topbarDatumEl = document.getElementById('topbar-datum');
+function aktualisiereTopbarDatum() {
+  const jetzt = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  topbarDatumEl.textContent = `${pad(jetzt.getDate())}.${pad(jetzt.getMonth() + 1)}.${jetzt.getFullYear()}`;
+}
+aktualisiereTopbarDatum();
+setInterval(aktualisiereTopbarDatum, 60000);
+
 const grid = document.getElementById('galerie-grid');
 const galerieAnzeigeModusSel = document.getElementById('galerie-anzeige-modus');
 const externLinkAktivInp = document.getElementById('extern-link-aktiv');
+const externLinkLabelInp = document.getElementById('extern-link-label');
 const externLinkUrlInp = document.getElementById('extern-link-url');
 const externLinkSpeichernBtn = document.getElementById('extern-link-speichern');
 const btnExternLink = document.getElementById('btn-extern-link');
@@ -268,10 +278,10 @@ function aktualisiereStatusAnzeige(daten) {
   const stummRest = daten.pushover_stumm_rest_sekunden || 0;
   if (stummRest > 0) {
     btnPushoverStumm.dataset.aktiv = '1';
-    btnPushoverStumm.textContent = `🔔 Stummschaltung aufheben (noch ${Math.ceil(stummRest / 60)} Min.)`;
+    btnPushoverStumm.textContent = `🔔 Messenger stumm aufheben (noch ${Math.ceil(stummRest / 60)} Min.)`;
   } else {
     btnPushoverStumm.dataset.aktiv = '0';
-    btnPushoverStumm.textContent = '🔕 Pushover stummschalten';
+    btnPushoverStumm.textContent = '🔕 Messenger stumm';
   }
 
   const testmodusRest = daten.foto_testmodus_rest_sekunden || 0;
@@ -592,6 +602,7 @@ async function speichereGalerieAnzeigeModus() {
 function aktualisiereExternLinkButton(werte) {
   if (werte.aktiv && werte.url) {
     btnExternLink.href = werte.url;
+    btnExternLink.textContent = werte.label || '🐝 Verkauf erfassen';
     btnExternLink.hidden = false;
   } else {
     btnExternLink.hidden = true;
@@ -603,6 +614,7 @@ async function ladeExternLink() {
     const res = await fetch('/api/extern-link');
     const data = await res.json();
     externLinkAktivInp.checked = !!data.aktiv;
+    externLinkLabelInp.value = data.label || '';
     externLinkUrlInp.value = data.url || '';
     aktualisiereExternLinkButton(data);
   } catch {
@@ -616,11 +628,16 @@ async function speichereExternLink() {
     const res = await fetch('/api/extern-link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aktiv: externLinkAktivInp.checked, url: externLinkUrlInp.value }),
+      body: JSON.stringify({
+        aktiv: externLinkAktivInp.checked,
+        label: externLinkLabelInp.value,
+        url: externLinkUrlInp.value,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       externLinkAktivInp.checked = !!data.aktiv;
+      externLinkLabelInp.value = data.label || '';
       externLinkUrlInp.value = data.url || '';
       aktualisiereExternLinkButton(data);
       toast('Gespeichert');
@@ -1465,7 +1482,7 @@ function waehleStummDauer() {
     box.className = 'confirm-box';
 
     const p = document.createElement('p');
-    p.textContent = 'Pushover für wie lange stummschalten?';
+    p.textContent = 'Messenger für wie lange stummschalten?';
 
     const optionen = document.createElement('div');
     optionen.className = 'pushover-stumm-popup-optionen';
@@ -1506,7 +1523,7 @@ async function pushoverStummStarten(minuten) {
       body: JSON.stringify({ aktiv: true, dauer_minuten: minuten }),
     });
     if (res.ok) {
-      toast(`Pushover für ${minuten} Minuten stummgeschaltet`);
+      toast(`Messenger für ${minuten} Minuten stummgeschaltet`);
       ladeStatus();
     } else {
       toast('Fehler beim Stummschalten');

@@ -239,7 +239,7 @@ GALERIE_ANZEIGE_STANDARD = {"modus": "feed"}
 # Seite verlinkt (z.B. zur "Erfassen"-Seite der BeeTown-Imkerei-App) - oeffnet
 # in einem neuen Tab, damit die HonigBox-Seite nicht verloren geht.
 EXTERN_LINK_PATH = os.path.join(EINSTELLUNGEN_DIR, ".extern-link.json")
-EXTERN_LINK_STANDARD = {"aktiv": False, "url": ""}
+EXTERN_LINK_STANDARD = {"aktiv": False, "url": "", "label": "🐝 Verkauf erfassen"}
 
 SPEICHER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".speicher-einstellungen.json")
 SIMULATION_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".simulation-einstellungen.json")
@@ -1015,7 +1015,8 @@ def speichere_extern_link(rohdaten):
     url = str(rohdaten.get("url", "")).strip()
     if url and not (url.startswith("http://") or url.startswith("https://")):
         raise ValueError("Link muss mit http:// oder https:// beginnen")
-    werte = {"aktiv": aktiv, "url": url}
+    label = str(rohdaten.get("label", "")).strip() or EXTERN_LINK_STANDARD["label"]
+    werte = {"aktiv": aktiv, "url": url, "label": label}
     with open(EXTERN_LINK_PATH, "w") as f:
         json.dump(werte, f)
     return werte
