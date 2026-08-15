@@ -142,20 +142,22 @@ def test_telegram_meldungen_unvollstaendige_uebergabe_faellt_pro_id_auf_aktiv_zu
     assert data["werte"]["meldungen"]["geschlossen"]["aktiv"] is True
 
 
-def test_telegram_aktiv_standard_an_und_abschaltbar(server):
+def test_telegram_aktiv_standard_aus_bei_erster_installation(server):
+    """Regressionstest: seit 2026-08-14 bewusst AUS bei einer frischen
+    Installation (Nutzerwunsch) - vorher war der Standard AN."""
     base_url, mod = server
     status, data = get(base_url, "/api/telegram")
-    assert data["werte"]["aktiv"] is True, "Standard muss an sein, sonst blieben bestehende Installationen stumm"
-
-    status, data = post(base_url, "/api/telegram", {"bot_token": "", "aktiv": False})
-    assert status == 200
     assert data["werte"]["aktiv"] is False
 
+    status, data = post(base_url, "/api/telegram", {"bot_token": "", "aktiv": True})
+    assert status == 200
+    assert data["werte"]["aktiv"] is True
+
     status, data = get(base_url, "/api/telegram")
-    assert data["werte"]["aktiv"] is False, "Schalter wurde nicht dauerhaft gespeichert"
+    assert data["werte"]["aktiv"] is True, "Schalter wurde nicht dauerhaft gespeichert"
 
     with open(mod.TELEGRAM_SHELL_CONF_PATH) as f:
-        assert "TELEGRAM_AKTIV='0'" in f.read()
+        assert "TELEGRAM_AKTIV='1'" in f.read()
 
 
 def test_telegram_verbinden_ohne_token_liefert_fehler(server):

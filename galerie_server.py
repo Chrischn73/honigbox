@@ -261,7 +261,7 @@ TELEGRAM_SHELL_CONF_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-einstellun
 TELEGRAM_CHATS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-chats.json")
 TELEGRAM_PENDING_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-pending-codes.json")
 TELEGRAM_OFFSET_PATH = os.path.join(EINSTELLUNGEN_DIR, ".telegram-update-offset")
-TELEGRAM_STANDARD = {"bot_token": "", "bot_username": "", "aktiv": True}
+TELEGRAM_STANDARD = {"bot_token": "", "bot_username": "", "aktiv": False}
 TELEGRAM_CODE_GUELTIG_SEK = 600  # 10 Minuten Zeitfenster fuer den Verbinden-Link
 
 # STATUS_PATH/TUER_SIMULATION_PATH/TUER_NEUSTART_SIGNAL_PATH sind reine
@@ -323,7 +323,7 @@ PUSHOVER_MELDUNGEN_SCHEMA = [
     {"id": "geschlossen", "label": "Tür wurde wieder geschlossen"},
 ]
 PUSHOVER_STANDARD = {
-    "token": "", "user": "", "aktiv": True,
+    "token": "", "user": "", "aktiv": False,
     "meldungen": {
         "boot": {"aktiv": True, "text": "Raspi wurde gestartet!"},
         "geoeffnet": {"aktiv": True, "text": "HONIGBOX wurde geöffnet!"},
@@ -640,7 +640,7 @@ def speichere_pushover_einstellungen(rohdaten):
     bereinigt = {
         "token": str(rohdaten.get("token", "")).strip(),
         "user": str(rohdaten.get("user", "")).strip(),
-        "aktiv": bool(rohdaten.get("aktiv", True)),
+        "aktiv": bool(rohdaten.get("aktiv", False)),
         "meldungen": {},
     }
     roh_meldungen = rohdaten.get("meldungen") or {}
@@ -731,7 +731,7 @@ def speichere_telegram_einstellungen(rohdaten):
     falls der Token nicht bestaetigt werden konnte, damit ein echter Tippfehler
     trotzdem auffaellt statt sich unbemerkt festzusetzen."""
     token = str(rohdaten.get("bot_token", "")).strip()
-    aktiv = bool(rohdaten.get("aktiv", True))
+    aktiv = bool(rohdaten.get("aktiv", False))
     roh_meldungen = rohdaten.get("meldungen") or {}
     meldungen = {
         schema["id"]: {"aktiv": bool(roh_meldungen.get(schema["id"], {}).get("aktiv", True))}

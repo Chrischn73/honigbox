@@ -93,17 +93,19 @@ def test_pushover_einstellungen_rundtrip(server):
     assert data["werte"]["user"] == "xyz789"
 
 
-def test_pushover_aktiv_standard_an_und_abschaltbar(server):
+def test_pushover_aktiv_standard_aus_bei_erster_installation(server):
+    """Regressionstest: seit 2026-08-14 bewusst AUS bei einer frischen
+    Installation (Nutzerwunsch) - vorher war der Standard AN."""
     base_url, mod = server
     status, data = get(base_url, "/api/pushover")
-    assert data["werte"]["aktiv"] is True, "Standard muss an sein, sonst blieben bestehende Installationen stumm"
-
-    status, data = post(base_url, "/api/pushover", {"token": "abc", "user": "xyz", "aktiv": False})
-    assert status == 200
     assert data["werte"]["aktiv"] is False
 
+    status, data = post(base_url, "/api/pushover", {"token": "abc", "user": "xyz", "aktiv": True})
+    assert status == 200
+    assert data["werte"]["aktiv"] is True
+
     status, data = get(base_url, "/api/pushover")
-    assert data["werte"]["aktiv"] is False, "Schalter wurde nicht dauerhaft gespeichert"
+    assert data["werte"]["aktiv"] is True, "Schalter wurde nicht dauerhaft gespeichert"
 
     with open(mod.PUSHOVER_SHELL_CONF_PATH) as f:
         assert "PUSHOVER_AKTIV='0'" in f.read()

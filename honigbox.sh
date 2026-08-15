@@ -36,10 +36,13 @@ os.chmod(EINSTELLUNGEN_DIR, 0o777)
 SWITCH_PIN = 17  # BCM-Nummerierung
 
 # Schalter zwischen GPIO17 und GND, interner Pull-Up.
-# Standard-Verdrahtung: Kontakt geschlossen (is_pressed=True) -> Tuer offen,
-# Kontakt offen (is_pressed=False) -> Tuer zu. Ueber die Web-UI-Einstellung
-# "Türkontakt umdrehen" laesst sich das umkehren, falls jemand den Schalter
-# versehentlich als Oeffner statt Schliesser angeschlossen hat - siehe
+# Standard-Verdrahtung (seit 2026-08-14, Nutzer-Hardware): Kontakt offen
+# (is_pressed=False) -> Tuer offen, Kontakt geschlossen (is_pressed=True) ->
+# Tuer zu - siehe door_is_open() weiter unten (bewusst so gedreht statt nur
+# den Standard von "Türkontakt umdrehen" zu aendern, damit die Checkbox
+# weiterhin ausgeschaltet/"raus" bleibt UND als Ausnahme-Schalter fuer die
+# jeweils andere Verdrahtung nutzbar ist). Ueber die Web-UI-Einstellung
+# "Türkontakt umdrehen" laesst sich das bei Bedarf zurueckdrehen - siehe
 # kontakt_invertiert()/door_is_open() weiter unten.
 door_switch = Button(SWITCH_PIN, pull_up=True, bounce_time=0.2)
 
@@ -126,10 +129,10 @@ _letzte_oeffnung = _lade_letzte_oeffnung()  # Unix-Zeitstempel der letzten Oeffn
 
 def kontakt_invertiert():
     """True, falls der Schalter laut Web-UI-Einstellung ("Türkontakt
-    umdrehen") versehentlich als Oeffner statt Schliesser angeschlossen ist -
+    umdrehen") von der Standard-Verdrahtung abweichend angeschlossen ist -
     siehe /api/tuer-einstellungen in galerie_server.py. Faellt auf False
-    zurueck (Standard-Verdrahtung: Kontakt geschlossen = Tuer offen), wenn die
-    Einstellungsdatei fehlt oder kaputt ist."""
+    zurueck (Standard-Verdrahtung, siehe Kommentar bei door_switch oben),
+    wenn die Einstellungsdatei fehlt oder kaputt ist."""
     try:
         with open(TUER_EINSTELLUNGEN_PATH) as f:
             return bool(json.load(f).get("kontakt_invertiert", False))
@@ -139,7 +142,9 @@ def kontakt_invertiert():
 
 def door_is_open():
     global _tuer_offen_seit, _letzte_oeffnung
-    kontakt_bedeutet_offen = door_switch.is_pressed
+    # Seit 2026-08-14 gedreht (neue Standard-Verdrahtung, siehe Kommentar bei
+    # door_switch oben): is_pressed=False -> offen statt is_pressed=True -> offen.
+    kontakt_bedeutet_offen = not door_switch.is_pressed
     if kontakt_invertiert():
         kontakt_bedeutet_offen = not kontakt_bedeutet_offen
     offen = simulation_aktiv() or kontakt_bedeutet_offen
