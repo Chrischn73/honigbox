@@ -70,6 +70,23 @@ TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-sign
 # Pfad muss identisch mit TUER_EINSTELLUNGEN_PATH in galerie_server.py sein
 # (von dort per Web-UI geschrieben, siehe /api/tuer-einstellungen).
 TUER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-einstellungen.json")
+# Pfad muss identisch mit PUSHOVER_STUMM_PATH in galerie_server.py sein -
+# "Messenger + Fotos aus" (Startseite) schreibt hier zusaetzlich zum "bis"-
+# Zeitstempel ein "auch_fotos"-Feld, siehe fotos_pausiert() unten.
+PUSHOVER_STUMM_PATH = os.path.join(EINSTELLUNGEN_DIR, ".pushover-stumm-bis.json")
+
+
+def fotos_pausiert():
+    """True, solange der Button 'Messenger + Fotos aus' aktiv ist - unterdrueckt
+    dann sowohl das Sofortfoto (sofortfoto_start()) als auch die Fotos waehrend
+    warte_waehrend_offen(). Die Meldungen selbst werden unabhaengig davon schon
+    von send_pushover.sh/send_telegram.sh anhand derselben Datei unterdrueckt."""
+    try:
+        with open(PUSHOVER_STUMM_PATH) as f:
+            daten = json.load(f)
+        return time.time() < daten.get("bis", 0) and bool(daten.get("auch_fotos", False))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return False
 
 
 def schreibe_status(offen, offen_seit, letzte_oeffnung):
@@ -292,8 +309,14 @@ def warte_waehrend_offen(gesamt_timeout, eskalationen, sofortfoto_erledigt=False
             return "geschlossen"
 
         if anzahl_fotos < max_anzahl and elapsed >= naechstes_foto:
-            run("foto.sh")
-            anzahl_fotos += 1
+            # "Messenger + Fotos aus" ueberspringt nur die Aufnahme selbst -
+            # anzahl_fotos NICHT hochzaehlen (sonst waere das Foto-Kontingent
+            # nach der Pause schon verbraucht), naechstes_foto aber trotzdem
+            # normal weiterschalten (sonst wuerde jede einzelne Sekunde waehrend
+            # der Pause unnoetig neu geprueft).
+            if not fotos_pausiert():
+                run("foto.sh")
+                anzahl_fotos += 1
             if elapsed < phase1_dauer:
                 aktuelles_intervall = phase1_intervall
             elif elapsed < phase1_dauer + phase2_dauer:
@@ -372,9 +395,10 @@ push("boot")
 
 while True:
     if door_is_open():
-        # max_anzahl=0 (Nutzer will bei Tueroeffnung explizit KEINE Fotos)
-        # muss auch hier gelten, nicht nur im spaeteren Zeitplan.
-        sofortfoto_erledigt = lade_foto_zeitplan().get("max_anzahl", 0) > 0
+        # max_anzahl=0 (Nutzer will bei Tueroeffnung explizit KEINE Fotos) und
+        # "Messenger + Fotos aus" muessen auch hier gelten, nicht nur im
+        # spaeteren Zeitplan.
+        sofortfoto_erledigt = lade_foto_zeitplan().get("max_anzahl", 0) > 0 and not fotos_pausiert()
         if sofortfoto_erledigt:
             sofortfoto_start()
         time.sleep(WAIT_CONFIRM)

@@ -930,7 +930,21 @@ def pushover_stumm_rest_sekunden():
     return max(0, round(bis - time.time()))
 
 
-def setze_pushover_stumm(aktiv, dauer_minuten=None):
+def pushover_stumm_auch_fotos():
+    """True, wenn die AKTUELL laufende Stummschaltung ueber den 'Messenger +
+    Fotos aus'-Button gestartet wurde (statt nur 'Messenger aus') - honigbox.sh
+    liest dieselbe Datei eigenstaendig, um waehrend dieser Zeit keine Fotos
+    aufzunehmen (siehe fotos_pausiert() dort)."""
+    if pushover_stumm_rest_sekunden() <= 0:
+        return False
+    try:
+        with open(PUSHOVER_STUMM_PATH) as f:
+            return bool(json.load(f).get("auch_fotos", False))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return False
+
+
+def setze_pushover_stumm(aktiv, dauer_minuten=None, auch_fotos=False):
     if aktiv:
         try:
             dauer_minuten = int(dauer_minuten)
@@ -939,7 +953,7 @@ def setze_pushover_stumm(aktiv, dauer_minuten=None):
         if dauer_minuten not in PUSHOVER_STUMM_DAUER_OPTIONEN_MIN:
             dauer_minuten = PUSHOVER_STUMM_DAUER_STANDARD_MIN
         with open(PUSHOVER_STUMM_PATH, "w") as f:
-            json.dump({"bis": time.time() + dauer_minuten * 60}, f)
+            json.dump({"bis": time.time() + dauer_minuten * 60, "auch_fotos": bool(auch_fotos)}, f)
     else:
         try:
             os.remove(PUSHOVER_STUMM_PATH)
@@ -1434,6 +1448,7 @@ class Handler(BaseHTTPRequestHandler):
                 "tuer_letzte_oeffnung": tuer["letzte_oeffnung"],
                 "kamera_erkannt": _kamera_erkannt_cache,
                 "pushover_stumm_rest_sekunden": pushover_stumm_rest_sekunden(),
+                "pushover_stumm_auch_fotos": pushover_stumm_auch_fotos(),
                 "foto_testmodus_rest_sekunden": foto_testmodus_rest_sekunden(),
             })
         if path == "/api/foto/testmodus":
@@ -1561,8 +1576,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/pushover/stumm":
             body = self._rjson()
-            setze_pushover_stumm(bool(body.get("aktiv")), body.get("dauer_minuten"))
-            return self._json({"ok": True, "rest_sekunden": pushover_stumm_rest_sekunden()})
+            setze_pushover_stumm(bool(body.get("aktiv")), body.get("dauer_minuten"), bool(body.get("auch_fotos")))
+            return self._json({
+                "ok": True,
+                "rest_sekunden": pushover_stumm_rest_sekunden(),
+                "auch_fotos": pushover_stumm_auch_fotos(),
+            })
 
         if path == "/api/foto/testmodus":
             body = self._rjson()

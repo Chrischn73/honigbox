@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.16';
+const APP_VERSION = 'v1.3.17';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -77,6 +77,7 @@ const statusTuerEl = document.getElementById('status-tuer');
 const statusLetzteOeffnungEl = document.getElementById('status-letzte-oeffnung');
 const kameraFehltWarnungEl = document.getElementById('kamera-fehlt-warnung');
 const btnPushoverStumm = document.getElementById('btn-pushover-stumm');
+const btnPushoverStummFotos = document.getElementById('btn-pushover-stumm-fotos');
 const PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [3, 5, 10, 20, 30];
 const STATUS_VERALTET_NACH_SEK = 15;
 const hauptTabBtns = document.querySelectorAll('.haupt-tab-btn');
@@ -276,12 +277,20 @@ function aktualisiereStatusAnzeige(daten) {
   kameraFehltWarnungEl.hidden = daten.kamera_erkannt !== false;
 
   const stummRest = daten.pushover_stumm_rest_sekunden || 0;
-  if (stummRest > 0) {
+  const stummAuchFotos = !!daten.pushover_stumm_auch_fotos;
+  if (stummRest > 0 && !stummAuchFotos) {
     btnPushoverStumm.dataset.aktiv = '1';
-    btnPushoverStumm.textContent = `🔔 Messenger stumm aufheben (noch ${Math.ceil(stummRest / 60)} Min.)`;
+    btnPushoverStumm.textContent = `🔔 Messenger aufheben (noch ${Math.ceil(stummRest / 60)} Min.)`;
   } else {
     btnPushoverStumm.dataset.aktiv = '0';
-    btnPushoverStumm.textContent = '🔕 Messenger stumm';
+    btnPushoverStumm.textContent = '🔕 Messenger aus';
+  }
+  if (stummRest > 0 && stummAuchFotos) {
+    btnPushoverStummFotos.dataset.aktiv = '1';
+    btnPushoverStummFotos.textContent = `🔔📷 Messenger + Fotos aufheben (noch ${Math.ceil(stummRest / 60)} Min.)`;
+  } else {
+    btnPushoverStummFotos.dataset.aktiv = '0';
+    btnPushoverStummFotos.textContent = '🔕📷 Messenger + Fotos aus';
   }
 
   const testmodusRest = daten.foto_testmodus_rest_sekunden || 0;
@@ -1473,7 +1482,7 @@ async function tuerSimulieren() {
 // Wie bestaetigen(), aber mit mehreren Auswahl-Buttons statt Ja/Nein - fuer
 // die Dauer der Pushover-Stummschaltung. Gibt die gewaehlte Minutenzahl
 // zurueck, oder null bei "Abbrechen"/Klick auf den Hintergrund.
-function waehleStummDauer() {
+function waehleStummDauer(titel) {
   return new Promise((resolve) => {
     const back = document.createElement('div');
     back.className = 'confirm-back';
@@ -1482,7 +1491,7 @@ function waehleStummDauer() {
     box.className = 'confirm-box';
 
     const p = document.createElement('p');
-    p.textContent = 'Messenger für wie lange stummschalten?';
+    p.textContent = titel;
 
     const optionen = document.createElement('div');
     optionen.className = 'pushover-stumm-popup-optionen';
@@ -1514,16 +1523,18 @@ function waehleStummDauer() {
   });
 }
 
-async function pushoverStummStarten(minuten) {
-  btnPushoverStumm.disabled = true;
+async function pushoverStummStarten(minuten, auchFotos, btn) {
+  btn.disabled = true;
   try {
     const res = await fetch('/api/pushover/stumm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aktiv: true, dauer_minuten: minuten }),
+      body: JSON.stringify({ aktiv: true, dauer_minuten: minuten, auch_fotos: auchFotos }),
     });
     if (res.ok) {
-      toast(`Messenger für ${minuten} Minuten stummgeschaltet`);
+      toast(auchFotos
+        ? `Messenger + Fotos für ${minuten} Minuten aus`
+        : `Messenger für ${minuten} Minuten stummgeschaltet`);
       ladeStatus();
     } else {
       toast('Fehler beim Stummschalten');
@@ -1531,12 +1542,12 @@ async function pushoverStummStarten(minuten) {
   } catch {
     toast('Fehler beim Stummschalten');
   } finally {
-    btnPushoverStumm.disabled = false;
+    btn.disabled = false;
   }
 }
 
-async function pushoverStummAufheben() {
-  btnPushoverStumm.disabled = true;
+async function pushoverStummAufheben(btn) {
+  btn.disabled = true;
   try {
     const res = await fetch('/api/pushover/stumm', {
       method: 'POST',
@@ -1552,18 +1563,19 @@ async function pushoverStummAufheben() {
   } catch {
     toast('Fehler beim Umschalten');
   } finally {
-    btnPushoverStumm.disabled = false;
+    btn.disabled = false;
   }
 }
 
-async function pushoverStummKlick() {
-  if (btnPushoverStumm.dataset.aktiv === '1') {
-    await pushoverStummAufheben();
+async function pushoverStummKlick(btn, auchFotos) {
+  if (btn.dataset.aktiv === '1') {
+    await pushoverStummAufheben(btn);
     return;
   }
-  const minuten = await waehleStummDauer();
+  const titel = auchFotos ? 'Messenger + Fotos für wie lange aus?' : 'Messenger für wie lange stummschalten?';
+  const minuten = await waehleStummDauer(titel);
   if (minuten === null) return;
-  await pushoverStummStarten(minuten);
+  await pushoverStummStarten(minuten, auchFotos, btn);
 }
 
 async function batchArchivieren() {
@@ -1828,7 +1840,8 @@ btnHerunterfahren.addEventListener('click', herunterfahren);
 btnDiensteNeustart.addEventListener('click', diensteNeustart);
 tuerKontaktSpeichernBtn.addEventListener('click', speichereTuerEinstellungen);
 btnTuerSimulieren.addEventListener('click', tuerSimulieren);
-btnPushoverStumm.addEventListener('click', pushoverStummKlick);
+btnPushoverStumm.addEventListener('click', () => pushoverStummKlick(btnPushoverStumm, false));
+btnPushoverStummFotos.addEventListener('click', () => pushoverStummKlick(btnPushoverStummFotos, true));
 fotoZeitplanSpeichernBtn.addEventListener('click', speichereFotoZeitplan);
 galerieAnzeigeModusSel.addEventListener('change', speichereGalerieAnzeigeModus);
 externLinkSpeichernBtn.addEventListener('click', speichereExternLink);

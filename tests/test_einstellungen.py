@@ -228,9 +228,33 @@ def test_pushover_stumm_mit_gueltiger_dauer(server):
     status, data = post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 10})
     assert status == 200
     assert 595 <= data["rest_sekunden"] <= 600
+    assert data["auch_fotos"] is False
 
     status, data = post(base_url, "/api/pushover/stumm", {"aktiv": False})
     assert data["rest_sekunden"] == 0
+
+
+def test_pushover_stumm_auch_fotos(server):
+    """'Messenger + Fotos aus' - zusaetzliches auch_fotos-Feld, das
+    honigbox.sh fuer die Foto-Pause ausliest (siehe fotos_pausiert())."""
+    base_url, mod = server
+    status, data = post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 10, "auch_fotos": True})
+    assert status == 200
+    assert data["auch_fotos"] is True
+    assert mod.pushover_stumm_auch_fotos() is True
+
+    status, data = get(base_url, "/api/status")
+    assert data["pushover_stumm_auch_fotos"] is True
+
+    status, data = post(base_url, "/api/pushover/stumm", {"aktiv": False})
+    assert data["auch_fotos"] is False
+    assert mod.pushover_stumm_auch_fotos() is False
+
+
+def test_pushover_stumm_ohne_auch_fotos_wirkt_nicht_auf_fotos(server):
+    base_url, mod = server
+    post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 10})
+    assert mod.pushover_stumm_auch_fotos() is False
 
 
 def test_pushover_stumm_mit_unzulaessiger_dauer_faellt_auf_standard_zurueck(server):

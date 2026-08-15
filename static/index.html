@@ -29,7 +29,10 @@
   </div>
   <p class="warnhinweis" id="kamera-fehlt-warnung" hidden>⚠️ Keine Kamera erkannt – bitte Anschluss prüfen (siehe „❓ Hilfe“ in den Einstellungen).</p>
 
-  <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm" style="margin:0 1rem .8rem">🔕 Messenger stumm</button>
+  <div style="display:flex; flex-direction:column; align-items:flex-start; gap:.5rem; margin:0 1rem .8rem">
+    <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm">🔕 Messenger aus</button>
+    <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm-fotos">🔕📷 Messenger + Fotos aus</button>
+  </div>
 
   <nav class="haupt-tabs">
     <button class="haupt-tab-btn" id="haupt-tab-fotos" data-ansicht="fotos">📷 Aufnahmen</button>
