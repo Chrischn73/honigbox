@@ -10,29 +10,33 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-titel">
-      <h1>BeeTown HonigBox <span id="app-version-tag" class="app-version-tag"></span></h1>
-      <div class="topbar-by">
-        by <img src="./imkerei-logo.jpeg" alt="Imkerei Frerichs" class="topbar-logo">
+  <div class="kopf-fixiert">
+    <header class="topbar">
+      <div class="topbar-zeile">
+        <h1>BeeTown HonigBox <span id="app-version-tag" class="app-version-tag"></span></h1>
+        <span id="topbar-datum" class="topbar-datum"></span>
       </div>
+      <div class="topbar-zeile">
+        <div class="topbar-by">
+          by <img src="./imkerei-logo.jpeg" alt="Imkerei Frerichs" class="topbar-logo">
+        </div>
+        <a class="topbar-setup-btn" id="link-setup-seite" href="#">⚙️ Setup / Update / Backup</a>
+      </div>
+    </header>
+
+    <div class="status-leiste">
+      <span id="status-raspi" class="status-badge">⏳ Lade Status…</span>
+      <span id="status-dienst" class="status-badge">⏳ Lade Status…</span>
+      <span id="status-tuer" class="status-badge">⏳ Lade Status…</span>
+      <span id="status-letzte-oeffnung" class="status-badge" title="">⏳ Lade Status…</span>
     </div>
-    <span id="topbar-datum" class="topbar-datum"></span>
-    <a class="topbar-setup-btn" id="link-setup-seite" href="#">⚙️ Setup / Update / Backup</a>
-  </header>
+    <p class="warnhinweis" id="kamera-fehlt-warnung" hidden>⚠️ Keine Kamera erkannt – bitte Anschluss prüfen (siehe „❓ Hilfe“ in den Einstellungen).</p>
 
-  <div class="status-leiste">
-    <span id="status-raspi" class="status-badge">⏳ Lade Status…</span>
-    <span id="status-dienst" class="status-badge">⏳ Lade Status…</span>
-    <span id="status-tuer" class="status-badge">⏳ Lade Status…</span>
-    <span id="status-letzte-oeffnung" class="status-badge" title="">⏳ Lade Status…</span>
-  </div>
-  <p class="warnhinweis" id="kamera-fehlt-warnung" hidden>⚠️ Keine Kamera erkannt – bitte Anschluss prüfen (siehe „❓ Hilfe“ in den Einstellungen).</p>
-
-  <div class="start-aktionen">
-    <button class="btn btn-sm btn-dunkel" id="btn-pushover-stumm" hidden>🔕 Messenger aus</button>
-    <button class="btn btn-sm btn-dunkel" id="btn-fotos-pause" hidden>📷 Fotos aus</button>
-    <button class="btn btn-sm btn-dunkel" id="btn-pushover-stumm-fotos">🔕📷 Messenger + Fotos aus</button>
+    <div class="start-aktionen">
+      <button class="btn btn-sm btn-dunkel" id="btn-pushover-stumm" hidden>🔕 Messenger aus</button>
+      <button class="btn btn-sm btn-dunkel" id="btn-fotos-pause" hidden>📷 Fotos aus</button>
+      <button class="btn btn-sm btn-dunkel" id="btn-pushover-stumm-fotos">🔕📷 Messenger + Fotos aus</button>
+    </div>
   </div>
 
   <nav class="haupt-tabs">
