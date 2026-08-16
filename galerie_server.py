@@ -170,6 +170,7 @@ GRUPPE_AUFRAEUMEN = "Aufräumen"
 GRUPPE_PHASE1 = "Phase 1"
 GRUPPE_PHASE2 = "Phase 2"
 GRUPPE_DANACH = "Danach"
+GRUPPE_DUNKLE_FOTOS = "Dunkle Fotos"
 
 # Deckt die gesamte "📷 Fotos"-Seite ab: Aufnahme-Zeitplan waehrend einer
 # Tueroeffnung + alles, was Fotos wieder loescht (Aufbewahrungsdauer, zu
@@ -197,16 +198,16 @@ FOTO_ZEITPLAN_FELDER = [
     {"key": "aufbewahrungstage", "typ": "zahl", "label": "... + zusätzlich Tage dazu (beides 0 = nie löschen)",
      "min": 0, "max": 3650, "step": 1, "gruppe": GRUPPE_AUFRAEUMEN},
     {"key": "dunkle_fotos_loeschen", "typ": "checkbox",
-     "label": "Zu dunkle Fotos automatisch löschen (z. B. Tür noch fast zu)", "gruppe": GRUPPE_AUFRAEUMEN},
+     "label": "Zu dunkle Fotos automatisch löschen (z. B. Tür noch fast zu)", "gruppe": GRUPPE_DUNKLE_FOTOS},
     {"key": "helligkeitsschwelle", "typ": "zahl",
-     "label": "↳ Mindesthelligkeit zum Behalten, siehe Haken oben (0-255, höher = strenger)", "min": 0, "max": 255,
-     "step": 1, "gruppe": GRUPPE_AUFRAEUMEN},
+     "label": "Mindesthelligkeit zum Behalten (0-255, höher = strenger)", "min": 0, "max": 255,
+     "step": 1, "gruppe": GRUPPE_DUNKLE_FOTOS},
 ]
 FOTO_ZEITPLAN_STANDARD = {
     "phase1_dauer_sekunden": 60, "phase1_intervall_sekunden": 3,
     "phase2_dauer_sekunden": 60, "phase2_intervall_sekunden": 8,
     "intervall_danach_sekunden": 15, "max_anzahl": 30,
-    "aufbewahrungstage": 30, "aufbewahrungsstunden": 0, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 25,
+    "aufbewahrungstage": 30, "aufbewahrungsstunden": 0, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 28,
 }
 
 
@@ -548,7 +549,7 @@ def einzelfoto_helligkeit_pruefen():
     einstellungen = lade_foto_zeitplan()
     if not einstellungen.get("dunkle_fotos_loeschen"):
         return False, None
-    schwelle = einstellungen.get("helligkeitsschwelle", 25)
+    schwelle = einstellungen.get("helligkeitsschwelle", 28)
     try:
         dateien = [f for f in os.listdir(BILDER_DIR) if sichere_dateiname(f)]
         if not dateien:

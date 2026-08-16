@@ -53,6 +53,15 @@ def test_foto_zeitplan_dunkle_fotos_loeschen_standard_aktiv(server):
     assert data["werte"]["dunkle_fotos_loeschen"] is True
 
 
+def test_foto_zeitplan_helligkeitsschwelle_standard_28(server):
+    """Regressionstest: Standard wurde 2026-08-14 von 25 auf 28 geaendert
+    (Nutzerwunsch)."""
+    base_url, _ = server
+    status, data = get(base_url, "/api/foto-zeitplan")
+    assert status == 200
+    assert data["werte"]["helligkeitsschwelle"] == 28
+
+
 def test_foto_zeitplan_helligkeitsschwelle_wird_auf_erlaubten_bereich_geklemmt(server):
     base_url, mod = server
     feld = next(f for f in mod.FOTO_ZEITPLAN_FELDER if f["key"] == "helligkeitsschwelle")

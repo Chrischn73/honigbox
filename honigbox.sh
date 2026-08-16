@@ -61,7 +61,7 @@ FOTO_ZEITPLAN_STANDARD = {
     "phase1_dauer_sekunden": 60, "phase1_intervall_sekunden": 3,
     "phase2_dauer_sekunden": 60, "phase2_intervall_sekunden": 8,
     "intervall_danach_sekunden": 15, "max_anzahl": 30,
-    "aufbewahrungstage": 30, "aufbewahrungsstunden": 0, "dunkle_fotos_loeschen": False, "helligkeitsschwelle": 25,
+    "aufbewahrungstage": 30, "aufbewahrungsstunden": 0, "dunkle_fotos_loeschen": False, "helligkeitsschwelle": 28,
 }
 
 STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".status.json")
@@ -249,7 +249,7 @@ def dunkle_fotos_aufraeumen(sitzung_start):
     einstellungen = lade_foto_zeitplan()
     if not einstellungen.get("dunkle_fotos_loeschen"):
         return
-    schwelle = einstellungen.get("helligkeitsschwelle", 25)
+    schwelle = einstellungen.get("helligkeitsschwelle", 28)
     try:
         from PIL import Image, ImageStat
     except ImportError:
