@@ -56,7 +56,7 @@ def _migriere_alte_einstellungsdatei(alter_pfad, neuer_pfad):
         pass
 
 
-AUFRAEUM_INTERVALL_SEK = 3600
+AUFRAEUM_INTERVALL_SEK = 900  # 15 Minuten (2026-08-14 von 1 Std. verkuerzt, da Loeschfrist jetzt auch in Stunden einstellbar ist)
 SPEICHER_WACHE_INTERVALL_SEK = 30
 
 KAMERA_EINSTELLUNGEN_PATH = os.environ.get(
