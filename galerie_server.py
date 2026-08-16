@@ -184,8 +184,10 @@ FOTO_ZEITPLAN_FELDER = [
      "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
     {"key": "max_anzahl", "typ": "zahl", "label": "Maximale Anzahl Fotos pro Türöffnung", "min": 1, "max": 500, "step": 1,
      "gruppe": GRUPPE_AUFNAHME},
-    {"key": "aufbewahrungstage", "typ": "zahl", "label": "Fotos automatisch löschen nach (Tage, 0 = nie)",
+    {"key": "aufbewahrungstage", "typ": "zahl", "label": "Fotos automatisch löschen nach: Tage",
      "min": 0, "max": 3650, "step": 1, "gruppe": GRUPPE_AUFRAEUMEN},
+    {"key": "aufbewahrungsstunden", "typ": "zahl", "label": "... + zusätzlich Stunden (beides 0 = nie löschen)",
+     "min": 0, "max": 23, "step": 1, "gruppe": GRUPPE_AUFRAEUMEN},
     {"key": "dunkle_fotos_loeschen", "typ": "checkbox",
      "label": "Zu dunkle Fotos automatisch löschen (z. B. Tür noch fast zu)", "gruppe": GRUPPE_AUFRAEUMEN},
     {"key": "helligkeitsschwelle", "typ": "zahl",
@@ -196,7 +198,7 @@ FOTO_ZEITPLAN_STANDARD = {
     "phase1_dauer_sekunden": 60, "phase1_intervall_sekunden": 3,
     "phase2_dauer_sekunden": 60, "phase2_intervall_sekunden": 8,
     "intervall_danach_sekunden": 15, "max_anzahl": 30,
-    "aufbewahrungstage": 30, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 25,
+    "aufbewahrungstage": 30, "aufbewahrungsstunden": 0, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 25,
 }
 
 
@@ -288,12 +290,22 @@ GALERIE_ANZEIGE_STANDARD = {"modus": "feed"}
 EXTERN_LINK_PATH = os.path.join(EINSTELLUNGEN_DIR, ".extern-link.json")
 EXTERN_LINK_STANDARD = {"aktiv": False, "url": "", "label": "🐝 Verkauf erfassen"}
 
+# Welche der drei Stumm-/Pause-Buttons auf der Startseite ueberhaupt angezeigt
+# werden (unabhaengig davon, ob sie gerade aktiv sind) - Standard: nur der
+# kombinierte Button, die beiden einzelnen sind eher fuer Spezialfaelle.
+START_BUTTONS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".start-buttons-sichtbar.json")
+START_BUTTONS_STANDARD = {"messenger": False, "fotos": False, "messenger_fotos": True}
+
 SPEICHER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".speicher-einstellungen.json")
 SIMULATION_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".simulation-einstellungen.json")
 SIMULATION_DAUER_STANDARD_SEK = 120
 SIMULATION_DAUER_MAX_SEK = 1800
 
 PUSHOVER_STUMM_PATH = os.path.join(EINSTELLUNGEN_DIR, ".pushover-stumm-bis.json")
+# Eigene Datei fuer "Fotos aus"/"Messenger + Fotos aus" (siehe fotos_pause_rest_sekunden()
+# weiter unten) - bewusst getrennt von PUSHOVER_STUMM_PATH, damit sich Fotos und
+# Messenger unabhaengig voneinander pausieren lassen (drei Buttons auf der Startseite).
+FOTOS_PAUSE_PATH = os.path.join(EINSTELLUNGEN_DIR, ".fotos-pause-bis.json")
 PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [3, 5, 10, 20, 30]
 PUSHOVER_STUMM_DAUER_STANDARD_MIN = 5
 
@@ -930,21 +942,7 @@ def pushover_stumm_rest_sekunden():
     return max(0, round(bis - time.time()))
 
 
-def pushover_stumm_auch_fotos():
-    """True, wenn die AKTUELL laufende Stummschaltung ueber den 'Messenger +
-    Fotos aus'-Button gestartet wurde (statt nur 'Messenger aus') - honigbox.sh
-    liest dieselbe Datei eigenstaendig, um waehrend dieser Zeit keine Fotos
-    aufzunehmen (siehe fotos_pausiert() dort)."""
-    if pushover_stumm_rest_sekunden() <= 0:
-        return False
-    try:
-        with open(PUSHOVER_STUMM_PATH) as f:
-            return bool(json.load(f).get("auch_fotos", False))
-    except (OSError, json.JSONDecodeError, TypeError):
-        return False
-
-
-def setze_pushover_stumm(aktiv, dauer_minuten=None, auch_fotos=False):
+def setze_pushover_stumm(aktiv, dauer_minuten=None):
     if aktiv:
         try:
             dauer_minuten = int(dauer_minuten)
@@ -953,10 +951,43 @@ def setze_pushover_stumm(aktiv, dauer_minuten=None, auch_fotos=False):
         if dauer_minuten not in PUSHOVER_STUMM_DAUER_OPTIONEN_MIN:
             dauer_minuten = PUSHOVER_STUMM_DAUER_STANDARD_MIN
         with open(PUSHOVER_STUMM_PATH, "w") as f:
-            json.dump({"bis": time.time() + dauer_minuten * 60, "auch_fotos": bool(auch_fotos)}, f)
+            json.dump({"bis": time.time() + dauer_minuten * 60}, f)
     else:
         try:
             os.remove(PUSHOVER_STUMM_PATH)
+        except OSError:
+            pass
+
+
+def fotos_pause_rest_sekunden():
+    """0, wenn die Foto-Pause ('Fotos aus' / 'Messenger + Fotos aus') gerade
+    nicht aktiv ist - sonst verbleibende Sekunden. Bewusst eine EIGENE Datei/
+    eigener Zeitstempel statt eines Flags in PUSHOVER_STUMM_PATH - 'Fotos aus'
+    soll unabhaengig von der Messenger-Stummschaltung funktionieren. honigbox.sh
+    prueft dieselbe Datei eigenstaendig (fotos_pausiert())."""
+    if not os.path.isfile(FOTOS_PAUSE_PATH):
+        return 0
+    try:
+        with open(FOTOS_PAUSE_PATH) as f:
+            bis = json.load(f).get("bis", 0)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return 0
+    return max(0, round(bis - time.time()))
+
+
+def setze_fotos_pause(aktiv, dauer_minuten=None):
+    if aktiv:
+        try:
+            dauer_minuten = int(dauer_minuten)
+        except (TypeError, ValueError):
+            dauer_minuten = PUSHOVER_STUMM_DAUER_STANDARD_MIN
+        if dauer_minuten not in PUSHOVER_STUMM_DAUER_OPTIONEN_MIN:
+            dauer_minuten = PUSHOVER_STUMM_DAUER_STANDARD_MIN
+        with open(FOTOS_PAUSE_PATH, "w") as f:
+            json.dump({"bis": time.time() + dauer_minuten * 60}, f)
+    else:
+        try:
+            os.remove(FOTOS_PAUSE_PATH)
         except OSError:
             pass
 
@@ -1083,6 +1114,17 @@ def speichere_extern_link(rohdaten):
     return werte
 
 
+def lade_start_buttons():
+    return _lade_einstellungen_datei(START_BUTTONS_PATH, START_BUTTONS_STANDARD)
+
+
+def speichere_start_buttons(rohdaten):
+    werte = {key: bool(rohdaten.get(key, standard)) for key, standard in START_BUTTONS_STANDARD.items()}
+    with open(START_BUTTONS_PATH, "w") as f:
+        json.dump(werte, f)
+    return werte
+
+
 def lade_speicher_einstellungen():
     standard = {"speicherort": "ram", "ram_groesse_mb": empfohlene_ram_groesse_mb()}
     return _lade_einstellungen_datei(SPEICHER_EINSTELLUNGEN_PATH, standard)
@@ -1193,12 +1235,17 @@ def lade_tuer_status():
 
 def aufraeum_schleife():
     """Loescht periodisch Fotos in BILDER_DIR, die aelter als die eingestellte
-    Aufbewahrungsdauer sind. ARCHIV_DIR ist bewusst ausgenommen - Archivieren
-    ist ja gerade der Weg, ein Foto von der automatischen Loeschung auszunehmen."""
+    Aufbewahrungsdauer (Tage + zusaetzliche Stunden, z.B. '3 Tage und 12
+    Stunden' oder nur '3 Stunden' bei Tage=0) sind. ARCHIV_DIR ist bewusst
+    ausgenommen - Archivieren ist ja gerade der Weg, ein Foto von der
+    automatischen Loeschung auszunehmen."""
     while True:
-        tage = lade_foto_zeitplan().get("aufbewahrungstage", 0)
-        if tage and tage > 0:
-            grenze = time.time() - tage * 86400
+        zeitplan = lade_foto_zeitplan()
+        tage = zeitplan.get("aufbewahrungstage", 0)
+        stunden = zeitplan.get("aufbewahrungsstunden", 0)
+        gesamt_sekunden = tage * 86400 + stunden * 3600
+        if gesamt_sekunden > 0:
+            grenze = time.time() - gesamt_sekunden
             geloescht = 0
             for datei in os.listdir(BILDER_DIR):
                 if not sichere_dateiname(datei):
@@ -1211,7 +1258,7 @@ def aufraeum_schleife():
                 except OSError:
                     pass
             if geloescht:
-                print(f"Auto-Cleanup: {geloescht} Foto(s) aelter als {tage} Tage geloescht")
+                print(f"Auto-Cleanup: {geloescht} Foto(s) aelter als {tage} Tage {stunden} Stunden geloescht")
         time.sleep(AUFRAEUM_INTERVALL_SEK)
 
 
@@ -1423,6 +1470,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(lade_galerie_anzeige())
         if path == "/api/extern-link":
             return self._json(lade_extern_link())
+        if path == "/api/start-buttons":
+            return self._json(lade_start_buttons())
         if path == "/api/speicher":
             return self._json(speicher_status())
         if path == "/api/kamera":
@@ -1448,7 +1497,7 @@ class Handler(BaseHTTPRequestHandler):
                 "tuer_letzte_oeffnung": tuer["letzte_oeffnung"],
                 "kamera_erkannt": _kamera_erkannt_cache,
                 "pushover_stumm_rest_sekunden": pushover_stumm_rest_sekunden(),
-                "pushover_stumm_auch_fotos": pushover_stumm_auch_fotos(),
+                "fotos_pause_rest_sekunden": fotos_pause_rest_sekunden(),
                 "foto_testmodus_rest_sekunden": foto_testmodus_rest_sekunden(),
             })
         if path == "/api/foto/testmodus":
@@ -1527,6 +1576,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._err(400, str(e))
             return self._json({"ok": True, **werte})
 
+        if path == "/api/start-buttons":
+            body = self._rjson()
+            werte = speichere_start_buttons(body)
+            return self._json({"ok": True, **werte})
+
         if path == "/api/speicher":
             body = self._rjson()
             try:
@@ -1576,12 +1630,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/pushover/stumm":
             body = self._rjson()
-            setze_pushover_stumm(bool(body.get("aktiv")), body.get("dauer_minuten"), bool(body.get("auch_fotos")))
-            return self._json({
-                "ok": True,
-                "rest_sekunden": pushover_stumm_rest_sekunden(),
-                "auch_fotos": pushover_stumm_auch_fotos(),
-            })
+            setze_pushover_stumm(bool(body.get("aktiv")), body.get("dauer_minuten"))
+            return self._json({"ok": True, "rest_sekunden": pushover_stumm_rest_sekunden()})
+
+        if path == "/api/fotos-pause":
+            body = self._rjson()
+            setze_fotos_pause(bool(body.get("aktiv")), body.get("dauer_minuten"))
+            return self._json({"ok": True, "rest_sekunden": fotos_pause_rest_sekunden()})
 
         if path == "/api/foto/testmodus":
             body = self._rjson()

@@ -147,6 +147,13 @@ body{
 .btn-primary:hover{background:var(--honey-dark)}
 .btn-ghost{background:var(--surface); color:var(--ink); border-color:var(--line)}
 .btn-danger{background:var(--surface); color:var(--danger); border-color:var(--danger-soft-line)}
+/* Einheitliches dunkles Grau (46,46,46) statt weisser Schrift auf Honig-Orange
+   (schlecht lesbar) bzw. des Standard-Ghost-Looks - "Foto aufnehmen" hebt sich
+   ueber den Akzent-Rand leicht ab, bleibt aber im selben Grauton wie die
+   Messenger-Buttons. */
+.btn-dunkel{background:#2e2e2e; color:#f2f2f2; border-color:#2e2e2e}
+.btn-dunkel:hover{background:#3a3a3a}
+.btn-dunkel-akzent{border-color:var(--honey)}
 .btn-sm{min-height:38px; padding:.4rem .7rem; font-size:.9rem}
 
 .card-list{list-style:none; margin:0; padding:0; user-select:none;

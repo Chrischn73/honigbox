@@ -20,6 +20,30 @@ def test_kamera_einstellungen_rundtrip(server):
     assert data["werte"]["belichtungsmodus"] == "normal", "Einstellung wurde nicht dauerhaft gespeichert"
 
 
+def test_foto_zeitplan_aufbewahrungsstunden_standard_und_rundtrip(server):
+    """Regressionstest: seit 2026-08-14 kann die Loesch-Frist auch in
+    zusaetzlichen Stunden angegeben werden (z.B. '3 Stunden' bei Tage=0, oder
+    '3 Tage und 12 Stunden')."""
+    base_url, _ = server
+    status, data = get(base_url, "/api/foto-zeitplan")
+    assert status == 200
+    assert data["werte"]["aufbewahrungsstunden"] == 0
+
+    status, data = post(base_url, "/api/foto-zeitplan", {"aufbewahrungstage": 3, "aufbewahrungsstunden": 12})
+    assert status == 200
+    assert data["werte"]["aufbewahrungstage"] == 3
+    assert data["werte"]["aufbewahrungsstunden"] == 12
+
+
+def test_foto_zeitplan_aufbewahrungsstunden_wird_auf_erlaubten_bereich_geklemmt(server):
+    base_url, mod = server
+    feld = next(f for f in mod.FOTO_ZEITPLAN_FELDER if f["key"] == "aufbewahrungsstunden")
+
+    status, data = post(base_url, "/api/foto-zeitplan", {"aufbewahrungsstunden": feld["max"] + 100})
+    assert status == 200
+    assert data["werte"]["aufbewahrungsstunden"] == feld["max"]
+
+
 def test_foto_zeitplan_dunkle_fotos_loeschen_standard_aktiv(server):
     """Regressionstest: Standard wurde 2026-08-08 explizit von False auf True
     geaendert (Nutzerwunsch)."""
@@ -223,38 +247,65 @@ def test_extern_link_lehnt_nicht_http_url_ab(server):
     assert "http" in data["error"]
 
 
+def test_start_buttons_standard_nur_messenger_fotos_sichtbar(server):
+    base_url, _ = server
+    status, data = get(base_url, "/api/start-buttons")
+    assert status == 200
+    assert data["messenger"] is False
+    assert data["fotos"] is False
+    assert data["messenger_fotos"] is True
+
+
+def test_start_buttons_rundtrip(server):
+    base_url, _ = server
+    status, data = post(base_url, "/api/start-buttons",
+                         {"messenger": True, "fotos": True, "messenger_fotos": False})
+    assert status == 200
+    assert data["messenger"] is True
+    assert data["fotos"] is True
+    assert data["messenger_fotos"] is False
+
+    status, data = get(base_url, "/api/start-buttons")
+    assert data["messenger"] is True
+    assert data["fotos"] is True
+    assert data["messenger_fotos"] is False, "Einstellung wurde nicht dauerhaft gespeichert"
+
+
 def test_pushover_stumm_mit_gueltiger_dauer(server):
     base_url, _ = server
     status, data = post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 10})
     assert status == 200
     assert 595 <= data["rest_sekunden"] <= 600
-    assert data["auch_fotos"] is False
 
     status, data = post(base_url, "/api/pushover/stumm", {"aktiv": False})
     assert data["rest_sekunden"] == 0
 
 
-def test_pushover_stumm_auch_fotos(server):
-    """'Messenger + Fotos aus' - zusaetzliches auch_fotos-Feld, das
-    honigbox.sh fuer die Foto-Pause ausliest (siehe fotos_pausiert())."""
+def test_fotos_pause_unabhaengig_von_messenger_stumm(server):
+    """'Fotos aus' und 'Messenger aus' sind seit 2026-08-14 zwei komplett
+    unabhaengige Timer (getrennte Dateien) - so kann man Fotos pausieren,
+    ohne den Messenger stummzuschalten, und umgekehrt."""
     base_url, mod = server
-    status, data = post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 10, "auch_fotos": True})
+    status, data = post(base_url, "/api/fotos-pause", {"aktiv": True, "dauer_minuten": 10})
     assert status == 200
-    assert data["auch_fotos"] is True
-    assert mod.pushover_stumm_auch_fotos() is True
+    assert 595 <= data["rest_sekunden"] <= 600
+    assert mod.fotos_pause_rest_sekunden() > 0
+    assert mod.pushover_stumm_rest_sekunden() == 0, "Messenger-Stummschaltung darf davon unberuehrt bleiben"
 
     status, data = get(base_url, "/api/status")
-    assert data["pushover_stumm_auch_fotos"] is True
+    assert data["fotos_pause_rest_sekunden"] > 0
+    assert data["pushover_stumm_rest_sekunden"] == 0
 
-    status, data = post(base_url, "/api/pushover/stumm", {"aktiv": False})
-    assert data["auch_fotos"] is False
-    assert mod.pushover_stumm_auch_fotos() is False
+    status, data = post(base_url, "/api/fotos-pause", {"aktiv": False})
+    assert data["rest_sekunden"] == 0
+    assert mod.fotos_pause_rest_sekunden() == 0
 
 
-def test_pushover_stumm_ohne_auch_fotos_wirkt_nicht_auf_fotos(server):
+def test_messenger_stumm_wirkt_nicht_auf_fotos_pause(server):
     base_url, mod = server
     post(base_url, "/api/pushover/stumm", {"aktiv": True, "dauer_minuten": 10})
-    assert mod.pushover_stumm_auch_fotos() is False
+    assert mod.pushover_stumm_rest_sekunden() > 0
+    assert mod.fotos_pause_rest_sekunden() == 0, "'Messenger aus' darf die Foto-Pause nicht mit auslösen"
 
 
 def test_pushover_stumm_mit_unzulaessiger_dauer_faellt_auf_standard_zurueck(server):

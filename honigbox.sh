@@ -61,7 +61,7 @@ FOTO_ZEITPLAN_STANDARD = {
     "phase1_dauer_sekunden": 60, "phase1_intervall_sekunden": 3,
     "phase2_dauer_sekunden": 60, "phase2_intervall_sekunden": 8,
     "intervall_danach_sekunden": 15, "max_anzahl": 30,
-    "aufbewahrungstage": 30, "dunkle_fotos_loeschen": False, "helligkeitsschwelle": 25,
+    "aufbewahrungstage": 30, "aufbewahrungsstunden": 0, "dunkle_fotos_loeschen": False, "helligkeitsschwelle": 25,
 }
 
 STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".status.json")
@@ -70,21 +70,22 @@ TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-sign
 # Pfad muss identisch mit TUER_EINSTELLUNGEN_PATH in galerie_server.py sein
 # (von dort per Web-UI geschrieben, siehe /api/tuer-einstellungen).
 TUER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-einstellungen.json")
-# Pfad muss identisch mit PUSHOVER_STUMM_PATH in galerie_server.py sein -
-# "Messenger + Fotos aus" (Startseite) schreibt hier zusaetzlich zum "bis"-
-# Zeitstempel ein "auch_fotos"-Feld, siehe fotos_pausiert() unten.
-PUSHOVER_STUMM_PATH = os.path.join(EINSTELLUNGEN_DIR, ".pushover-stumm-bis.json")
+# Pfad muss identisch mit FOTOS_PAUSE_PATH in galerie_server.py sein - eigene
+# Datei/Zeitstempel getrennt von der Messenger-Stummschaltung, damit "Fotos aus"
+# unabhaengig von "Messenger aus" funktioniert (drei Buttons auf der Startseite).
+FOTOS_PAUSE_PATH = os.path.join(EINSTELLUNGEN_DIR, ".fotos-pause-bis.json")
 
 
 def fotos_pausiert():
-    """True, solange der Button 'Messenger + Fotos aus' aktiv ist - unterdrueckt
-    dann sowohl das Sofortfoto (sofortfoto_start()) als auch die Fotos waehrend
-    warte_waehrend_offen(). Die Meldungen selbst werden unabhaengig davon schon
-    von send_pushover.sh/send_telegram.sh anhand derselben Datei unterdrueckt."""
+    """True, solange 'Fotos aus' oder 'Messenger + Fotos aus' aktiv ist -
+    unterdrueckt dann sowohl das Sofortfoto (sofortfoto_start()) als auch die
+    Fotos waehrend warte_waehrend_offen(). Die Messenger-Stummschaltung selbst
+    ist unabhaengig davon (eigene Datei, von send_pushover.sh/send_telegram.sh
+    geprueft)."""
     try:
-        with open(PUSHOVER_STUMM_PATH) as f:
-            daten = json.load(f)
-        return time.time() < daten.get("bis", 0) and bool(daten.get("auch_fotos", False))
+        with open(FOTOS_PAUSE_PATH) as f:
+            bis = json.load(f).get("bis", 0)
+        return time.time() < bis
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return False
 

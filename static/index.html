@@ -30,8 +30,9 @@
   <p class="warnhinweis" id="kamera-fehlt-warnung" hidden>⚠️ Keine Kamera erkannt – bitte Anschluss prüfen (siehe „❓ Hilfe“ in den Einstellungen).</p>
 
   <div style="display:flex; flex-direction:column; align-items:flex-start; gap:.5rem; margin:0 1rem .8rem">
-    <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm">🔕 Messenger aus</button>
-    <button class="btn btn-sm btn-ghost" id="btn-pushover-stumm-fotos">🔕📷 Messenger + Fotos aus</button>
+    <button class="btn btn-sm btn-dunkel" id="btn-pushover-stumm" hidden>🔕 Messenger aus</button>
+    <button class="btn btn-sm btn-dunkel" id="btn-fotos-pause" hidden>📷 Fotos aus</button>
+    <button class="btn btn-sm btn-dunkel" id="btn-pushover-stumm-fotos">🔕📷 Messenger + Fotos aus</button>
   </div>
 
   <nav class="haupt-tabs">
@@ -44,7 +45,7 @@
       <div class="toolbar">
         <button class="btn" id="tab-fotos">Aktuelle Fotos</button>
         <button class="btn" id="tab-archiv">Archiv</button>
-        <button class="btn btn-primary" id="btn-foto-aufnehmen">📷 Foto aufnehmen</button>
+        <button class="btn btn-dunkel btn-dunkel-akzent" id="btn-foto-aufnehmen">📷 Foto aufnehmen</button>
         <a class="btn btn-ghost" id="btn-extern-link" href="#" target="_blank" rel="noopener" hidden>🐝 Verkauf erfassen</a>
         <label class="alle-auswahl">
           <input type="checkbox" id="alle-auswaehlen-cb"> Alle auswählen
@@ -301,6 +302,27 @@
         </div>
         <div class="kamera-aktionen">
           <button class="btn btn-sm btn-primary" id="extern-link-speichern">Speichern</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>🔘 Start-Buttons</summary>
+        <p class="muted" style="font-size:.85rem; margin-top:0;">Welche der Stumm-/Pause-Buttons oben auf der
+        Startseite überhaupt angezeigt werden.</p>
+        <div class="kamera-feld checkbox-feld">
+          <label for="start-buttons-messenger">🔕 Messenger aus</label>
+          <input type="checkbox" id="start-buttons-messenger">
+        </div>
+        <div class="kamera-feld checkbox-feld">
+          <label for="start-buttons-fotos">📷 Fotos aus</label>
+          <input type="checkbox" id="start-buttons-fotos">
+        </div>
+        <div class="kamera-feld checkbox-feld">
+          <label for="start-buttons-messenger-fotos">🔕📷 Messenger + Fotos aus</label>
+          <input type="checkbox" id="start-buttons-messenger-fotos">
+        </div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="start-buttons-speichern">Speichern</button>
         </div>
       </details>
 

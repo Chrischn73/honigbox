@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.17';
+const APP_VERSION = 'v1.3.18';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -22,6 +22,10 @@ const externLinkLabelInp = document.getElementById('extern-link-label');
 const externLinkUrlInp = document.getElementById('extern-link-url');
 const externLinkSpeichernBtn = document.getElementById('extern-link-speichern');
 const btnExternLink = document.getElementById('btn-extern-link');
+const startButtonsMessengerInp = document.getElementById('start-buttons-messenger');
+const startButtonsFotosInp = document.getElementById('start-buttons-fotos');
+const startButtonsMessengerFotosInp = document.getElementById('start-buttons-messenger-fotos');
+const startButtonsSpeichernBtn = document.getElementById('start-buttons-speichern');
 const tabFotos = document.getElementById('tab-fotos');
 const tabArchiv = document.getElementById('tab-archiv');
 const alleAuswaehlenCb = document.getElementById('alle-auswaehlen-cb');
@@ -78,6 +82,7 @@ const statusLetzteOeffnungEl = document.getElementById('status-letzte-oeffnung')
 const kameraFehltWarnungEl = document.getElementById('kamera-fehlt-warnung');
 const btnPushoverStumm = document.getElementById('btn-pushover-stumm');
 const btnPushoverStummFotos = document.getElementById('btn-pushover-stumm-fotos');
+const btnFotosPause = document.getElementById('btn-fotos-pause');
 const PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [3, 5, 10, 20, 30];
 const STATUS_VERALTET_NACH_SEK = 15;
 const hauptTabBtns = document.querySelectorAll('.haupt-tab-btn');
@@ -277,17 +282,25 @@ function aktualisiereStatusAnzeige(daten) {
   kameraFehltWarnungEl.hidden = daten.kamera_erkannt !== false;
 
   const stummRest = daten.pushover_stumm_rest_sekunden || 0;
-  const stummAuchFotos = !!daten.pushover_stumm_auch_fotos;
-  if (stummRest > 0 && !stummAuchFotos) {
+  const fotosPauseRest = daten.fotos_pause_rest_sekunden || 0;
+  if (stummRest > 0) {
     btnPushoverStumm.dataset.aktiv = '1';
     btnPushoverStumm.textContent = `🔔 Messenger aufheben (noch ${Math.ceil(stummRest / 60)} Min.)`;
   } else {
     btnPushoverStumm.dataset.aktiv = '0';
     btnPushoverStumm.textContent = '🔕 Messenger aus';
   }
-  if (stummRest > 0 && stummAuchFotos) {
+  if (fotosPauseRest > 0) {
+    btnFotosPause.dataset.aktiv = '1';
+    btnFotosPause.textContent = `📷 Fotos aufheben (noch ${Math.ceil(fotosPauseRest / 60)} Min.)`;
+  } else {
+    btnFotosPause.dataset.aktiv = '0';
+    btnFotosPause.textContent = '📷 Fotos aus';
+  }
+  if (stummRest > 0 && fotosPauseRest > 0) {
+    const restBeide = Math.min(stummRest, fotosPauseRest);
     btnPushoverStummFotos.dataset.aktiv = '1';
-    btnPushoverStummFotos.textContent = `🔔📷 Messenger + Fotos aufheben (noch ${Math.ceil(stummRest / 60)} Min.)`;
+    btnPushoverStummFotos.textContent = `🔔📷 Messenger + Fotos aufheben (noch ${Math.ceil(restBeide / 60)} Min.)`;
   } else {
     btnPushoverStummFotos.dataset.aktiv = '0';
     btnPushoverStummFotos.textContent = '🔕📷 Messenger + Fotos aus';
@@ -657,6 +670,51 @@ async function speichereExternLink() {
     toast('Fehler beim Speichern');
   } finally {
     externLinkSpeichernBtn.disabled = false;
+  }
+}
+
+function aktualisiereStartButtonsSichtbarkeit(werte) {
+  btnPushoverStumm.hidden = !werte.messenger;
+  btnFotosPause.hidden = !werte.fotos;
+  btnPushoverStummFotos.hidden = !werte.messenger_fotos;
+}
+
+async function ladeStartButtons() {
+  try {
+    const res = await fetch('/api/start-buttons');
+    const data = await res.json();
+    startButtonsMessengerInp.checked = !!data.messenger;
+    startButtonsFotosInp.checked = !!data.fotos;
+    startButtonsMessengerFotosInp.checked = !!data.messenger_fotos;
+    aktualisiereStartButtonsSichtbarkeit(data);
+  } catch {
+    toast('Einstellung für Start-Buttons konnte nicht geladen werden');
+  }
+}
+
+async function speichereStartButtons() {
+  startButtonsSpeichernBtn.disabled = true;
+  try {
+    const res = await fetch('/api/start-buttons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messenger: startButtonsMessengerInp.checked,
+        fotos: startButtonsFotosInp.checked,
+        messenger_fotos: startButtonsMessengerFotosInp.checked,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      aktualisiereStartButtonsSichtbarkeit(data);
+      toast('Gespeichert');
+    } else {
+      toast(data.error || 'Fehler beim Speichern');
+    }
+  } catch {
+    toast('Fehler beim Speichern');
+  } finally {
+    startButtonsSpeichernBtn.disabled = false;
   }
 }
 
@@ -1523,39 +1581,35 @@ function waehleStummDauer(titel) {
   });
 }
 
-async function pushoverStummStarten(minuten, auchFotos, btn) {
+// Ein Button ("messenger"/"fotos"/"beide") setzt/hebt einen oder beide der
+// zwei unabhaengigen Timer (/api/pushover/stumm, /api/fotos-pause) auf - siehe
+// setze_pushover_stumm()/setze_fotos_pause() in galerie_server.py.
+async function stummSetzen(modus, aktiv, minuten, btn) {
   btn.disabled = true;
   try {
-    const res = await fetch('/api/pushover/stumm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aktiv: true, dauer_minuten: minuten, auch_fotos: auchFotos }),
-    });
-    if (res.ok) {
-      toast(auchFotos
-        ? `Messenger + Fotos für ${minuten} Minuten aus`
-        : `Messenger für ${minuten} Minuten stummgeschaltet`);
-      ladeStatus();
-    } else {
-      toast('Fehler beim Stummschalten');
+    const aufrufe = [];
+    if (modus === 'messenger' || modus === 'beide') {
+      aufrufe.push(fetch('/api/pushover/stumm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aktiv, dauer_minuten: minuten }),
+      }));
     }
-  } catch {
-    toast('Fehler beim Stummschalten');
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function pushoverStummAufheben(btn) {
-  btn.disabled = true;
-  try {
-    const res = await fetch('/api/pushover/stumm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aktiv: false }),
-    });
-    if (res.ok) {
-      toast('Stummschaltung aufgehoben');
+    if (modus === 'fotos' || modus === 'beide') {
+      aufrufe.push(fetch('/api/fotos-pause', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aktiv, dauer_minuten: minuten }),
+      }));
+    }
+    const antworten = await Promise.all(aufrufe);
+    if (antworten.every((r) => r.ok)) {
+      if (aktiv) {
+        const text = { messenger: 'Messenger', fotos: 'Fotos', beide: 'Messenger + Fotos' }[modus];
+        toast(`${text} für ${minuten} Minuten aus`);
+      } else {
+        toast('Aufgehoben');
+      }
       ladeStatus();
     } else {
       toast('Fehler beim Umschalten');
@@ -1567,15 +1621,19 @@ async function pushoverStummAufheben(btn) {
   }
 }
 
-async function pushoverStummKlick(btn, auchFotos) {
+async function stummKlick(modus, btn) {
   if (btn.dataset.aktiv === '1') {
-    await pushoverStummAufheben(btn);
+    await stummSetzen(modus, false, null, btn);
     return;
   }
-  const titel = auchFotos ? 'Messenger + Fotos für wie lange aus?' : 'Messenger für wie lange stummschalten?';
+  const titel = {
+    messenger: 'Messenger für wie lange stummschalten?',
+    fotos: 'Fotos für wie lange aus?',
+    beide: 'Messenger + Fotos für wie lange aus?',
+  }[modus];
   const minuten = await waehleStummDauer(titel);
   if (minuten === null) return;
-  await pushoverStummStarten(minuten, auchFotos, btn);
+  await stummSetzen(modus, true, minuten, btn);
 }
 
 async function batchArchivieren() {
@@ -1840,11 +1898,13 @@ btnHerunterfahren.addEventListener('click', herunterfahren);
 btnDiensteNeustart.addEventListener('click', diensteNeustart);
 tuerKontaktSpeichernBtn.addEventListener('click', speichereTuerEinstellungen);
 btnTuerSimulieren.addEventListener('click', tuerSimulieren);
-btnPushoverStumm.addEventListener('click', () => pushoverStummKlick(btnPushoverStumm, false));
-btnPushoverStummFotos.addEventListener('click', () => pushoverStummKlick(btnPushoverStummFotos, true));
+btnPushoverStumm.addEventListener('click', () => stummKlick('messenger', btnPushoverStumm));
+btnFotosPause.addEventListener('click', () => stummKlick('fotos', btnFotosPause));
+btnPushoverStummFotos.addEventListener('click', () => stummKlick('beide', btnPushoverStummFotos));
 fotoZeitplanSpeichernBtn.addEventListener('click', speichereFotoZeitplan);
 galerieAnzeigeModusSel.addEventListener('change', speichereGalerieAnzeigeModus);
 externLinkSpeichernBtn.addEventListener('click', speichereExternLink);
+startButtonsSpeichernBtn.addEventListener('click', speichereStartButtons);
 fotoZeitplanZuruecksetzenBtn.addEventListener('click', fotoZeitplanZuruecksetzen);
 pushoverSpeichernBtn.addEventListener('click', speicherePushoverEinstellungen);
 pushoverAlleAktivierenBtn.addEventListener('click', () => pushoverAlleSetzen(true));
@@ -1888,6 +1948,7 @@ ladeTuerEinstellungen();
 ladeSpeicherEinstellungen();
 ladeGalerieAnzeigeModus();
 ladeExternLink();
+ladeStartButtons();
 laden();
 ladeStatus();
 setInterval(ladeStatus, 5000);
