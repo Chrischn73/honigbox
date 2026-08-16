@@ -58,14 +58,21 @@ body{
 .topbar-by{display:flex; align-items:center; gap:.4rem; font-size:.75rem; color:rgba(255,255,255,.75)}
 .topbar-logo{height:30px; width:auto; display:block; border-radius:3px}
 
-.status-leiste{display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;
+.status-leiste{display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:.5rem;
   background:var(--surface); border-bottom:1px solid var(--line);
-  padding:.55rem 1rem; max-width:960px; margin:0 auto}
-.status-badge{display:inline-flex; align-items:center; gap:.3rem; font-size:.8rem; font-weight:650;
-  padding:.3rem .65rem; border-radius:999px; background:var(--bg); border:1px solid var(--line)}
+  padding:.6rem 1rem; max-width:960px; margin:0 auto}
+.status-badge{display:flex; align-items:center; justify-content:center; gap:.3rem; font-size:.8rem; font-weight:650;
+  padding:.4rem .65rem; border-radius:999px; background:var(--bg); border:1px solid var(--line); text-align:center}
 .status-badge.status-ok{color:var(--ok); border-color:var(--ok)}
 .status-badge.status-warn{color:var(--warn); border-color:var(--warn)}
 .status-badge.status-fehler{color:var(--danger); border-color:var(--danger-soft-line)}
+
+/* Buttons zum Stummschalten/Pausieren - eigener klar abgegrenzter Block statt
+   lose zwischen Status-Leiste und Tabs zu schweben, deshalb volle Breite und
+   dieselbe Ausrichtung (max-width/margin) wie die anderen Kopfbereiche. */
+.start-aktionen{display:flex; flex-direction:column; gap:.5rem;
+  max-width:960px; margin:.7rem auto .8rem; padding:0 1rem}
+.start-aktionen .btn{width:100%}
 
 .haupt-tabs{display:flex; gap:.4rem; max-width:960px; margin:0 auto; padding:.7rem 1rem 0; background:var(--bg)}
 .haupt-tab-btn{flex:1; font:inherit; font-weight:700; font-size:.95rem; padding:.75rem 1rem;
@@ -74,6 +81,18 @@ body{
 :root[data-theme="dark"] .haupt-tab-btn.aktiv{color:var(--honey)}
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]) .haupt-tab-btn.aktiv{color:var(--honey)}
+}
+
+/* Unter-Tabs (Aktuelle Fotos/Archiv) - dieselbe Unterstrich-Optik wie die
+   Haupt-Tabs (nur kompakter), damit Navigation optisch einheitlich bleibt und
+   sich klar von den Aktions-Buttons darunter (Toolbar) abgrenzt. */
+.unter-tabs{display:flex; gap:.3rem; margin-bottom:.9rem; border-bottom:1px solid var(--line)}
+.unter-tab-btn{flex:1; font:inherit; font-weight:700; font-size:.85rem; padding:.55rem .5rem;
+  border:none; border-bottom:3px solid transparent; background:transparent; color:var(--ink-soft); cursor:pointer}
+.unter-tab-btn.aktiv{color:var(--honey-dark); border-bottom-color:var(--honey)}
+:root[data-theme="dark"] .unter-tab-btn.aktiv{color:var(--honey)}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .unter-tab-btn.aktiv{color:var(--honey)}
 }
 
 #app{max-width:960px; margin:0 auto; padding:1.2rem 1rem calc(2rem + var(--safe-bottom))}

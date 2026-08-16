@@ -29,7 +29,7 @@
   </div>
   <p class="warnhinweis" id="kamera-fehlt-warnung" hidden>⚠️ Keine Kamera erkannt – bitte Anschluss prüfen (siehe „❓ Hilfe“ in den Einstellungen).</p>
 
-  <div style="display:flex; flex-direction:column; align-items:flex-start; gap:.5rem; margin:0 1rem .8rem">
+  <div class="start-aktionen">
     <button class="btn btn-sm btn-dunkel" id="btn-pushover-stumm" hidden>🔕 Messenger aus</button>
     <button class="btn btn-sm btn-dunkel" id="btn-fotos-pause" hidden>📷 Fotos aus</button>
     <button class="btn btn-sm btn-dunkel" id="btn-pushover-stumm-fotos">🔕📷 Messenger + Fotos aus</button>
@@ -42,9 +42,11 @@
 
   <main id="app">
     <section id="ansicht-fotos" class="ansicht">
+      <div class="unter-tabs">
+        <button class="unter-tab-btn" id="tab-fotos">Aktuelle Fotos</button>
+        <button class="unter-tab-btn" id="tab-archiv">Archiv</button>
+      </div>
       <div class="toolbar">
-        <button class="btn" id="tab-fotos">Aktuelle Fotos</button>
-        <button class="btn" id="tab-archiv">Archiv</button>
         <button class="btn btn-dunkel btn-dunkel-akzent" id="btn-foto-aufnehmen">📷 Foto aufnehmen</button>
         <a class="btn btn-ghost" id="btn-extern-link" href="#" target="_blank" rel="noopener" hidden>🐝 Verkauf erfassen</a>
         <label class="alle-auswahl">

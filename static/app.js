@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.21';
+const APP_VERSION = 'v1.3.22';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -726,8 +726,8 @@ function aktualisiereAuswahlLeiste() {
 }
 
 function setzeTabs() {
-  tabFotos.className = `btn ${!zeigeArchiv ? 'btn-primary' : 'btn-ghost'}`;
-  tabArchiv.className = `btn ${zeigeArchiv ? 'btn-primary' : 'btn-ghost'}`;
+  tabFotos.className = `unter-tab-btn ${!zeigeArchiv ? 'aktiv' : ''}`;
+  tabArchiv.className = `unter-tab-btn ${zeigeArchiv ? 'aktiv' : ''}`;
 }
 
 async function laden() {
