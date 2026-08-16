@@ -162,6 +162,14 @@ _migriere_foto_zeitplan_felder()
 
 GRUPPE_AUFNAHME = "Aufnahme-Zeitplan (während die Tür offen ist)"
 GRUPPE_AUFRAEUMEN = "Aufräumen"
+# Feinere Untergruppen INNERHALB des Aufnahme-Zeitplans (eigene Zwischen-
+# ueberschrift je Phase, siehe .kamera-feld-gruppe in styles.css - die ist
+# bewusst grid-column:1/-1, erzwingt also automatisch einen Zeilenumbruch vor
+# jeder Phase). Der uebergreifende Kontext-Satz steht stattdessen als
+# statischer Text ueber dem Feld-Container in index.html.
+GRUPPE_PHASE1 = "Phase 1"
+GRUPPE_PHASE2 = "Phase 2"
+GRUPPE_DANACH = "Danach"
 
 # Deckt die gesamte "📷 Fotos"-Seite ab: Aufnahme-Zeitplan waehrend einer
 # Tueroeffnung + alles, was Fotos wieder loescht (Aufbewahrungsdauer, zu
@@ -172,18 +180,18 @@ GRUPPE_AUFRAEUMEN = "Aufräumen"
 # _migriere_foto_zeitplan_felder() fuer die Umbenennung vom frueheren
 # zwei-stufigen Schema.
 FOTO_ZEITPLAN_FELDER = [
-    {"key": "phase1_dauer_sekunden", "typ": "zahl", "label": "Phase 1: Dauer (Sekunden)",
-     "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
-    {"key": "phase1_intervall_sekunden", "typ": "zahl", "label": "Phase 1: Foto-Intervall (Sekunden)",
-     "min": 1, "max": 600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
-    {"key": "phase2_dauer_sekunden", "typ": "zahl", "label": "Phase 2: weitere Dauer (Sekunden)",
-     "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
-    {"key": "phase2_intervall_sekunden", "typ": "zahl", "label": "Phase 2: Foto-Intervall (Sekunden)",
-     "min": 1, "max": 600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
-    {"key": "intervall_danach_sekunden", "typ": "zahl", "label": "Danach: Foto-Intervall (Sekunden)",
-     "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_AUFNAHME},
+    {"key": "phase1_dauer_sekunden", "typ": "zahl", "label": "Dauer (Sekunden)",
+     "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_PHASE1},
+    {"key": "phase1_intervall_sekunden", "typ": "zahl", "label": "↳ Foto-Intervall dabei (Sekunden)",
+     "min": 1, "max": 600, "step": 1, "gruppe": GRUPPE_PHASE1},
+    {"key": "phase2_dauer_sekunden", "typ": "zahl", "label": "weitere Dauer (Sekunden)",
+     "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_PHASE2},
+    {"key": "phase2_intervall_sekunden", "typ": "zahl", "label": "↳ Foto-Intervall dabei (Sekunden)",
+     "min": 1, "max": 600, "step": 1, "gruppe": GRUPPE_PHASE2},
+    {"key": "intervall_danach_sekunden", "typ": "zahl", "label": "Foto-Intervall (Sekunden)",
+     "min": 1, "max": 3600, "step": 1, "gruppe": GRUPPE_DANACH},
     {"key": "max_anzahl", "typ": "zahl", "label": "Maximale Anzahl Fotos pro Türöffnung", "min": 1, "max": 500, "step": 1,
-     "gruppe": GRUPPE_AUFNAHME},
+     "gruppe": GRUPPE_DANACH},
     {"key": "aufbewahrungsstunden", "typ": "zahl", "label": "Fotos automatisch löschen nach: Stunden",
      "min": 0, "max": 23, "step": 1, "gruppe": GRUPPE_AUFRAEUMEN},
     {"key": "aufbewahrungstage", "typ": "zahl", "label": "... + zusätzlich Tage dazu (beides 0 = nie löschen)",
