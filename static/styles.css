@@ -43,7 +43,12 @@ body{
 /* Kompletter Kopfbereich (Titelzeile, Status-Badges, Kamera-Warnung,
    Stumm-/Pause-Buttons) bleibt beim Scrollen durch die Fotos stehen - nur
    der Bereich AB den Haupt-Tabs (Aufnahmen/Einstellungen) scrollt normal. */
-.kopf-fixiert{position:sticky; top:0; z-index:20; background:var(--bg)}
+/* padding-bottom statt nur margin auf den Kindern - eine Marge in normalem
+   Fluss verschwindet beim Scrollen mit, sobald sie am oberen Rand vorbei ist
+   (der fixierte Block "klebt" dann direkt am naechsten Inhalt, egal was das
+   gerade ist). Der Abstand muss TEIL des fixierten Blocks selbst sein, damit
+   er bei jeder Scroll-Position sichtbar bleibt. */
+.kopf-fixiert{position:sticky; top:0; z-index:20; background:var(--bg); padding-bottom:.6rem}
 
 .topbar{
   display:flex; flex-direction:column; gap:.35rem;
@@ -77,7 +82,7 @@ body{
    lose zwischen Status-Leiste und Tabs zu schweben, deshalb volle Breite und
    dieselbe Ausrichtung (max-width/margin) wie die anderen Kopfbereiche. */
 .start-aktionen{display:flex; flex-direction:column; gap:.5rem;
-  max-width:960px; margin:.7rem auto 1.1rem; padding:0 1rem}
+  max-width:960px; margin:.7rem auto .5rem; padding:0 1rem}
 .start-aktionen .btn{width:100%}
 
 .haupt-tabs{display:flex; gap:.4rem; max-width:960px; margin:0 auto; padding:.7rem 1rem 0; background:var(--bg)}
