@@ -1,10 +1,13 @@
 #!/bin/bash
-# Taegliches Backup des kompletten HonigBox-App-Ordners (Code + Fotos +
-# Einstellungen). Wird immer lokal unter /opt/backup abgelegt UND
-# zusaetzlich auf einen eingerichteten USB-Stick kopiert, falls einer unter
-# USB_MOUNT eingehaengt ist (eigene Rotation dort). Aufbewahrung nach dem
-# Vater-Sohn-Prinzip (honigbox-backup-rotate.py) statt nur "die letzten N" -
-# haelt automatisch taegliche/woechentliche/monatliche/jaehrliche
+# Taegliches Backup des HonigBox-App-Ordners OHNE die Fotos (die sind wegen
+# der geplanten Archiv-Verschluesselung/DSGVO bewusst ausgeschlossen - ein
+# Backup wuerde sie sonst entweder unverschluesselt an den Backup-Ort
+# durchreichen oder nutzlose Ciphertext-Daten sichern). Gesichert werden
+# also nur Code + Einstellungen. Wird immer lokal unter /opt/backup abgelegt
+# UND zusaetzlich auf einen eingerichteten USB-Stick kopiert, falls einer
+# unter USB_MOUNT eingehaengt ist (eigene Rotation dort). Aufbewahrung nach
+# dem Vater-Sohn-Prinzip (honigbox-backup-rotate.py) statt nur "die letzten
+# N" - haelt automatisch taegliche/woechentliche/monatliche/jaehrliche
 # Stichproben, ohne dass Zeitplan oder Stufen manuell verwaltet werden
 # muessen. Einzige Einstellung ist MAX_BACKUPS (Gesamtanzahl je Ort).
 set -euo pipefail
@@ -24,7 +27,7 @@ timestamp="$(date +%Y-%m-%d-%H%M%S)"
 archive_name="honigbox-backup-$timestamp.tar.gz"
 archive="$DEST_DIR/$archive_name"
 
-tar czf "$archive" -C "$(dirname "$SRC_DIR")" "$(basename "$SRC_DIR")"
+tar czf "$archive" --exclude="$(basename "$SRC_DIR")/fotos" -C "$(dirname "$SRC_DIR")" "$(basename "$SRC_DIR")"
 echo "Backup erstellt (lokal): $archive"
 
 # Rotation lokal: Vater-Sohn-Prinzip statt einfach nur "die letzten N".

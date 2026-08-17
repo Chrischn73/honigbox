@@ -57,7 +57,7 @@ for f in honigbox.sh foto.sh send_pushover.sh send_telegram.sh galerie_server.py
     fi
 done
 for f in honigbox-backup.sh honigbox-backup-rotate.py honigbox-backup.service honigbox-backup.timer \
-         honigbox-update-check.service honigbox-update-check.timer honigbox-restore-hook.sh; do
+         honigbox-update-check.service honigbox-update-check.timer; do
     if [ ! -e "$SETUP_DIR/$f" ]; then
         echo "FEHLER: $SETUP_DIR/$f fehlt."
         exit 1
@@ -168,14 +168,13 @@ sicher_kopieren "$PROJECT_DIR/send_pushover.sh" /opt/honigbox/send_pushover.sh
 sicher_kopieren "$PROJECT_DIR/send_telegram.sh" /opt/honigbox/send_telegram.sh
 sicher_kopieren "$PROJECT_DIR/galerie_server.py" /opt/honigbox/galerie_server.py
 sicher_kopieren "$PROJECT_DIR/speicher_umschalten.sh" /opt/honigbox/speicher_umschalten.sh
-sicher_kopieren "$SETUP_DIR/honigbox-restore-hook.sh" /opt/honigbox/honigbox-restore-hook.sh
 sicher_kopiere_ordner "$PROJECT_DIR/static" /opt/honigbox/static
 
 # Wichtig: die Shell-Scripte brauchen das Ausfuehrungsrecht, sonst bricht
 # honigbox.sh beim Aufruf mit "Permission denied" ab (ist uns schon einmal
 # so passiert).
 chmod +x /opt/honigbox/honigbox.sh /opt/honigbox/foto.sh /opt/honigbox/send_pushover.sh \
-    /opt/honigbox/send_telegram.sh /opt/honigbox/speicher_umschalten.sh /opt/honigbox/honigbox-restore-hook.sh
+    /opt/honigbox/send_telegram.sh /opt/honigbox/speicher_umschalten.sh
 
 # Pushover-Zugangsdaten nur beim allerersten Einrichten anlegen, damit ein
 # spaeter ueber die Web-UI gespeicherter echter Token bei einem erneuten
@@ -310,14 +309,12 @@ cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
   "backup": {
     "script": "/opt/backup-scripts/honigbox-backup.sh",
     "prefix": "honigbox-backup",
-    "restore_data_prefix": "honigbox/fotos",
-    "restore_target_dir": "/opt/honigbox/fotos",
+    "restore_data_prefix": "honigbox/einstellungen",
+    "restore_target_dir": "/opt/honigbox/einstellungen",
     "restore_chmod": "777",
     "restore_stop_services": ["honigbox.service", "honigbox-galerie.service"],
     "restore_start_services": ["honigbox.service", "honigbox-galerie.service"],
-    "pre_restore_hook": "/opt/honigbox/honigbox-restore-hook.sh pre",
-    "post_restore_hook": "/opt/honigbox/honigbox-restore-hook.sh post",
-    "restored_label": "Fotos"
+    "restored_label": "Einstellungen"
   },
   "update": {
     "github_repo": "Chrischn73/honigbox",
@@ -330,7 +327,6 @@ cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
       {"src": "send_telegram.sh", "dest": "/opt/honigbox/send_telegram.sh", "mode": "0755"},
       {"src": "galerie_server.py", "dest": "/opt/honigbox/galerie_server.py", "mode": "0644", "chown": "www-data:www-data"},
       {"src": "speicher_umschalten.sh", "dest": "/opt/honigbox/speicher_umschalten.sh", "mode": "0755"},
-      {"src": "setup/honigbox-restore-hook.sh", "dest": "/opt/honigbox/honigbox-restore-hook.sh", "mode": "0755"},
       {"src": "static", "dest": "/opt/honigbox/static", "mode": "dir", "chown": "www-data:www-data"},
       {"src": "honigbox.service", "dest": "/etc/systemd/system/honigbox.service", "mode": "0644"},
       {"src": "honigbox-galerie.service", "dest": "/etc/systemd/system/honigbox-galerie.service", "mode": "0644"}
