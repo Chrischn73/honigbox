@@ -254,8 +254,7 @@ def _seite_archiv_schluessel(fehler=None):
                                  f"SD-Karte einige Sekunden dauern...</p>")
             else:
                 wartet = True
-                hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe "
-                                 f"(oder auf Zeitüberschreitung, bis zu 2 Minuten).</p>")
+                hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe.</p>")
         elif status == "fresh" and zustand[name]["schluessel"]:
             bundle[name] = zustand[name]["schluessel"]
             hinweise.append(f"<p>{html.escape(label)}: neuer Container angelegt.</p>")
@@ -270,6 +269,9 @@ def _seite_archiv_schluessel(fehler=None):
 
     if wartet:
         formular += """
+        <p class="muted">Es gibt kein Zeitlimit - lass dir Zeit, den Schlüssel zu suchen.
+        Ist dir der bisherige Archiv-Bestand nicht wichtig, kannst du unten direkt auf
+        "Nein, frisch anfangen" klicken, ohne einen Schlüssel einzugeben.</p>
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="eingabe">
           <textarea name="schluessel" rows="4" placeholder="Gesicherten Schlüssel oder heruntergeladene Datei hier einfügen" required></textarea>
@@ -301,20 +303,29 @@ def _seite_archiv_schluessel(fehler=None):
     if bundle:
         bundle_b64 = base64.b64encode(json.dumps(bundle).encode()).decode()
         formular += f"""
-        <p class="warnhinweis">Diesen Schlüssel jetzt auf einen externen PC sichern - danach ist
-        er hier nicht mehr abrufbar! Ohne ihn ist der jeweilige Bestand nach einem künftigen
-        Neustart ohne erneute Eingabe unwiderruflich weg.</p>
+        <p class="muted">Dieser Schlüssel ist nur wichtig, wenn du das Foto-Archiv über einen
+        künftigen Neustart hinweg behalten willst. Ist dir das egal, kannst du diesen Schritt
+        einfach überspringen und unten direkt weiterklicken.</p>
+        <p class="warnhinweis">Falls doch: diesen Schlüssel JETZT auf einen externen PC sichern -
+        danach ist er hier nicht mehr abrufbar! Ohne ihn ist der jeweilige Bestand nach einem
+        künftigen Neustart ohne erneute Eingabe unwiderruflich weg.</p>
         <a class="btn btn-primary" download="honigbox-schluessel.json"
            href="data:application/json;base64,{bundle_b64}">Schlüssel herunterladen</a>
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="bestaetigt">
-          <button type="submit" class="btn btn-danger">Ich habe den Schlüssel gesichert</button>
+          <button type="submit" class="btn btn-ghost">Weiter ohne Schlüsselsicherung</button>
         </form>
         """
     elif not (wartet or verarbeitung):
         formular += '<a class="btn btn-primary" href="/">Weiter zur HonigBox</a>'
 
-    return _zugang_seite("Verschlüsselungs-Schlüssel für das Foto-Archiv", formular, fehler)
+    return _zugang_seite(
+        "Verschlüsselungs-Schlüssel für das Foto-Archiv - betrifft nur bewusst archivierte "
+        "Fotos, nicht die aktuellen Fotos, die Türüberwachung oder sonstige Einstellungen. "
+        "Wird nach einem Neustart oder Stromausfall gebraucht, um wieder auf die bisherigen "
+        "Archiv-Fotos zugreifen zu können - ohne ihn wird automatisch ein neues, leeres "
+        "Archiv angelegt.",
+        formular, fehler)
 
 
 def _migriere_alte_einstellungsdatei(alter_pfad, neuer_pfad):

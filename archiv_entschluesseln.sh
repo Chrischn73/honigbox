@@ -13,17 +13,20 @@
 # stattdessen laufend selbst ueber die hier erzeugten Status-Dateien
 # (siehe archiv_bereit() dort), nicht beim eigenen Prozessstart.
 #
-# Jeder Fehler (kaputter Container, cryptsetup-Absturz, abgelaufene
-# Wartezeit, falscher eingegebener Schluessel) wird GLEICH behandelt: alten
-# Container verwerfen, frischen Container mit neuem Zufalls-Schluessel
-# anlegen. Das Skript darf NIE mit einem Fehler enden, bevor eine
-# Status-Datei existiert - sonst bliebe der Dienst dauerhaft "failed" (auch
-# mit Restart=on-failure irgendwann erschoepft) und die Galerie haengt
-# permanent im Schluessel-Gate, ohne dass je wieder etwas passiert. Bewusst
-# KEIN Named-Pipe/FIFO fuer die Schluessel-Uebergabe (blockierendes open()
-# ist eine bekannte Faustfalle, siehe Boot-Sicherheits-Review) - stattdessen
-# einfaches Datei-Polling, das sich nicht in einem Warte-Aufruf verstecken
-# kann.
+# Wartet auf einen vorhandenen, gueltigen Container OHNE Zeitlimit - man
+# koennte laenger suchen muessen, wo der Schluessel gesichert wurde, das
+# darf nicht dazu fuehren, dass der alte Bestand automatisch verworfen wird.
+# Aufgeben (frischer Container) passiert deshalb NUR noch durch eine
+# ausdrueckliche Nutzer-Entscheidung ("Nein, frisch anfangen" in der
+# Web-Oberflaeche) - nie von selbst durch Zeitablauf. cryptsetup-Fehler
+# (kaputter Container, Absturz, falscher eingegebener Schluessel) werden
+# trotzdem GLEICH behandelt: alten Container verwerfen, frischen Container
+# mit neuem Zufalls-Schluessel anlegen. Das Skript darf NIE mit einem Fehler
+# enden, bevor eine Status-Datei existiert - sonst bliebe der Dienst
+# dauerhaft "failed" und die Galerie haengt permanent im Schluessel-Gate,
+# ohne dass je wieder etwas passiert. Bewusst KEIN Named-Pipe/FIFO fuer die
+# Schluessel-Uebergabe (blockierendes open() ist eine bekannte Faustfalle,
+# siehe Boot-Sicherheits-Review) - stattdessen einfaches Datei-Polling.
 #
 # WICHTIGER HINWEIS FUER EIN BESTEHENDES "Platte"-Deployment: existieren in
 # BILDER_DIR/ARCHIV_DIR bereits Klartext-Fotos aus der Zeit VOR dieser
@@ -40,7 +43,6 @@ set -uo pipefail   # bewusst OHNE 'set -e': jeder Schritt wird einzeln
 RUN_DIR="${HONIGBOX_RUN_DIR:-/run/honigbox}"
 FOTOS_DIR="/opt/honigbox/fotos"
 SPEICHER_EINSTELLUNGEN_DATEI="/opt/honigbox/einstellungen/.speicher-einstellungen.json"
-WARTEZEIT_SEK="${HONIGBOX_ARCHIV_WARTEZEIT_SEK:-120}"
 CONTAINER_GROESSE_MB=512
 
 mkdir -p "$RUN_DIR"
@@ -117,10 +119,12 @@ container_schliessen() {
 }
 
 # container_oeffnen_oder_neu NAME CONTAINER_DATEI ZIEL_VERZEICHNIS
-# Fuer den Boot-Fall: wartet bei einem vorhandenen, gueltigen Container bis
-# zu WARTEZEIT_SEK auf eine Schluessel-Eingabe (Datei-Polling statt FIFO -
-# bewusst kein blockierendes open(), das ist eine bekannte Falle). NICHT fuer
-# den interaktiven Fall gedacht (siehe container_neu_anlegen oben).
+# Fuer den Boot-Fall: wartet bei einem vorhandenen, gueltigen Container OHNE
+# Zeitlimit auf eine Schluessel-Eingabe (Datei-Polling statt FIFO - bewusst
+# kein blockierendes open(), das ist eine bekannte Falle). Endet nur durch
+# eine gueltige Eingabe oder ein ausdrueckliches "NEU" (Nutzer waehlt "frisch
+# anfangen") - NIE von selbst durch Zeitablauf. NICHT fuer den interaktiven
+# Fall gedacht (siehe container_neu_anlegen oben).
 container_oeffnen_oder_neu() {
     local name="$1" datei="$2" ziel="$3"
     local eingabe="$RUN_DIR/${name}-eingabe" status="$RUN_DIR/${name}-status" key="$RUN_DIR/${name}-key"
@@ -135,18 +139,10 @@ container_oeffnen_oder_neu() {
         return
     fi
 
-    log "$name: warte bis zu ${WARTEZEIT_SEK}s auf Schluessel-Eingabe unter $eingabe ..."
-    local gewartet=0
-    while [ ! -f "$eingabe" ] && [ "$gewartet" -lt "$WARTEZEIT_SEK" ]; do
+    log "$name: warte ohne Zeitlimit auf Schluessel-Eingabe unter $eingabe ..."
+    while [ ! -f "$eingabe" ]; do
         sleep 1
-        gewartet=$((gewartet + 1))
     done
-
-    if [ ! -f "$eingabe" ]; then
-        log "$name: keine Eingabe innerhalb der Wartezeit - lege frischen Container an."
-        container_neu_anlegen "$name" "$datei" "$ziel"
-        return
-    fi
 
     local eingabe_wert
     eingabe_wert="$(cat "$eingabe" 2>/dev/null || true)"

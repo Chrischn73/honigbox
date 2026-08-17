@@ -12,12 +12,15 @@ After=local-fs.target haveged.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/opt/honigbox/archiv_entschluesseln.sh
-# Grosszuegig bemessen: bis zu 120s Wartezeit auf eine Schluessel-Eingabe
-# plus die Formatierzeit fuer ZWEI 512-MB-Container auf einer SD-Karte
-# muessen hier reinpassen. Ein durch TimeoutStartSec erzwungener SIGKILL
-# mitten in cryptsetup/mkfs wuerde einen dauerhaft korrupten Container
-# hinterlassen - lieber grosszuegig als knapp.
-TimeoutStartSec=480
+# Bewusst KEIN Zeitlimit: das Skript wartet ohne Timeout auf eine
+# Schluessel-Eingabe (man koennte laenger suchen muessen, wo der Schluessel
+# gesichert wurde) - ein von systemd erzwungener SIGKILL wuerde diese
+# Wartezeit von aussen kappen und (schlimmer) potenziell mitten in einem
+# cryptsetup/mkfs-Aufruf zuschlagen und einen korrupten Container
+# hinterlassen. Restart=on-failure bleibt als Sicherheitsnetz fuer einen
+# echten Absturz (z.B. OOM) - ein Neustart des Dienstes faengt einfach
+# wieder von vorn mit Warten an, ohne Datenverlust.
+TimeoutStartSec=0
 Restart=on-failure
 RestartSec=10
 
