@@ -5,6 +5,7 @@ direkt statt helpers.get/post, weil Redirects/Set-Cookie/Form-POST gebraucht
 werden, die die JSON-fokussierten Helfer nicht abdecken."""
 import http.client
 import json
+import os
 from urllib.parse import urlencode, urlparse
 
 import pytest
@@ -153,3 +154,70 @@ def test_setze_zugang_passwort_lehnt_zu_kurzes_passwort_ab(galerie_env):
     mod = galerie_env
     with pytest.raises(ValueError):
         mod.setze_zugang_passwort("ab")
+
+
+def test_reset_nur_kurz_nach_neustart_moeglich(zugang_server):
+    """Kernanforderung: der Reset-Link darf nicht dauerhaft erreichbar sein -
+    sonst waere ein gestohlener Session-Cookie nutzlos, aber der physische
+    Neustart-Schutz waere es dann auch (jeder koennte jederzeit resetten)."""
+    base_url, mod = zugang_server
+    mod.setze_zugang_passwort("altesPasswort1")
+    assert mod.zugang_reset_moeglich() is True
+
+    status, _, body = _request(base_url, "GET", "/login")
+    assert b"/zuruecksetzen" in body
+
+    status, _, body = _request(base_url, "GET", "/zuruecksetzen")
+    assert status == 200
+    assert b"ALLE gespeicherten Fotos" in body
+
+    # Fenster (per Prozessstart-Zeitpunkt) als abgelaufen simulieren.
+    mod._ZUGANG_PROZESS_START -= mod.ZUGANG_RESET_FENSTER_SEKUNDEN + 1
+    assert mod.zugang_reset_moeglich() is False
+
+    status, _, body = _request(base_url, "GET", "/login")
+    assert b"/zuruecksetzen" not in body
+
+    status, headers, _ = _request(base_url, "GET", "/zuruecksetzen")
+    assert status == 302
+    assert headers["Location"] == "/login"
+
+    status, _, body = _request(
+        base_url, "POST", "/zuruecksetzen", form={"passwort": "neuABC123", "passwort2": "neuABC123"})
+    assert status == 302
+    assert mod.pruefe_zugang_passwort("altesPasswort1") is True  # unveraendert, Reset wurde nicht ausgefuehrt
+
+
+def test_reset_loescht_alle_fotos_und_invalidiert_cookies(zugang_server, tmp_path):
+    base_url, mod = zugang_server
+    mod.setze_zugang_passwort("altesPasswort1")
+    alter_cookie = f"{mod.ZUGANG_COOKIE_NAME}={mod._zugang_cookie_sollwert()}"
+
+    with open(os.path.join(mod.BILDER_DIR, "aktuell.jpg"), "wb") as f:
+        f.write(b"x")
+    with open(os.path.join(mod.ARCHIV_DIR, "archiviert.jpg"), "wb") as f:
+        f.write(b"x")
+
+    status, _, body = _request(
+        base_url, "POST", "/zuruecksetzen", form={"passwort": "neuesPasswort2", "passwort2": "andersXYZ"})
+    assert status == 200
+    assert "stimmen nicht" in body.decode()
+    assert os.path.isfile(os.path.join(mod.BILDER_DIR, "aktuell.jpg"))  # bei Fehler bleiben Fotos unberuehrt
+
+    status, headers, _ = _request(
+        base_url, "POST", "/zuruecksetzen", form={"passwort": "neuesPasswort2", "passwort2": "neuesPasswort2"})
+    assert status == 302
+    assert headers["Location"] == "/"
+    neuer_cookie = _cookie_aus_antwort(headers)
+
+    assert mod.liste_bilder(mod.BILDER_DIR) == []
+    assert mod.liste_bilder(mod.ARCHIV_DIR) == []
+    assert mod.pruefe_zugang_passwort("neuesPasswort2") is True
+
+    # Alter Cookie (z.B. anderer Browser) ist nach dem Reset abgemeldet.
+    status, headers, _ = _request(base_url, "GET", "/api/status", cookie=alter_cookie)
+    assert status == 302
+    assert headers["Location"] == "/login"
+
+    status, _, _ = _request(base_url, "GET", "/api/status", cookie=neuer_cookie)
+    assert status == 200

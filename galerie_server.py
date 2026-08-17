@@ -138,6 +138,21 @@ def zugang_cookie_gueltig(cookie_header):
     return hmac.compare_digest(morsel.value, sollwert)
 
 
+# Passwort vergessen? Ein Reset ist bewusst nur kurz nach einem (Dienst- oder
+# Geraete-)Neustart moeglich - das ist die einzige Huerde gegen jemanden mit
+# einem gestohlenen Session-Cookie: ohne das aktuelle Passwort kann er den
+# Server nicht per Web-UI neu starten (siehe geplante Neustart-Absicherung),
+# braucht also physischen oder SSH-Zugriff, um dieses Zeitfenster ueberhaupt
+# erst zu oeffnen. _ZUGANG_PROZESS_START wird beim Modul-Import gesetzt, also
+# bei jedem Dienststart (und damit auch bei jedem Geraete-Neustart) neu.
+ZUGANG_RESET_FENSTER_SEKUNDEN = 10 * 60
+_ZUGANG_PROZESS_START = time.time()
+
+
+def zugang_reset_moeglich():
+    return zugang_eingerichtet() and (time.time() - _ZUGANG_PROZESS_START) < ZUGANG_RESET_FENSTER_SEKUNDEN
+
+
 _ZUGANG_SEITE_TEMPLATE = """<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -188,7 +203,24 @@ def _seite_login(fehler=None):
       <input type="password" name="passwort" placeholder="Passwort" required autofocus>
       <button type="submit" class="btn btn-primary">Anmelden</button>
     </form>"""
+    if zugang_reset_moeglich():
+        formular += ('<p class="muted zugang-hinweis">Passwort vergessen? '
+                     '<a href="/zuruecksetzen">Jetzt zurücksetzen</a> '
+                     '(nur kurz nach einem Neustart möglich).</p>')
     return _zugang_seite("Bitte Passwort eingeben.", formular, fehler)
+
+
+def _seite_zuruecksetzen(fehler=None):
+    formular = """<form method="POST" action="/zuruecksetzen" class="zugang-form">
+      <input type="password" name="passwort" placeholder="Neues Passwort" minlength="4" required autofocus>
+      <input type="password" name="passwort2" placeholder="Passwort wiederholen" minlength="4" required>
+      <button type="submit" class="btn btn-danger">Passwort zurücksetzen &amp; alle Fotos löschen</button>
+    </form>
+    <p class="muted zugang-hinweis"><a href="/login">Abbrechen</a></p>"""
+    return _zugang_seite(
+        "Achtung: Beim Zurücksetzen werden ALLE gespeicherten Fotos "
+        "(aktuelle und Archiv) unwiderruflich gelöscht!",
+        formular, fehler)
 
 
 def _migriere_alte_einstellungsdatei(alter_pfad, neuer_pfad):
@@ -608,6 +640,26 @@ def thumbnail_entfernen(verzeichnis, dateiname):
     wieder gebraucht werden."""
     try:
         os.remove(_thumb_pfad(verzeichnis, dateiname))
+    except OSError:
+        pass
+
+
+def zugang_alle_fotos_loeschen():
+    """Loescht ALLE Fotos - aktuelle wie archivierte - inkl. Thumbnails und
+    Archiv-Notizen. Bewusste Konsequenz eines Passwort-Resets (siehe
+    Chat-Diskussion): wer zurueckgesetzt hat, hat sich dafuer Zugriff kurz
+    nach einem Neustart verschafft und nimmt den Datenverlust in Kauf - ein
+    Reset OHNE Datenverlust waere sonst der einfachste Weg, den
+    Passwortschutz komplett zu umgehen."""
+    for verzeichnis in (BILDER_DIR, ARCHIV_DIR):
+        for dateiname in liste_bilder(verzeichnis):
+            try:
+                os.remove(os.path.join(verzeichnis, dateiname))
+            except OSError:
+                pass
+        shutil.rmtree(os.path.join(verzeichnis, THUMB_ORDNER_NAME), ignore_errors=True)
+    try:
+        os.remove(ARCHIV_NOTIZEN_DATEI)
     except OSError:
         pass
 
@@ -1588,6 +1640,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._html(_seite_login("Falsches Passwort."))
         self._setze_zugang_cookie_und_redirect("/")
 
+    def _post_zuruecksetzen(self):
+        if not zugang_eingerichtet():
+            return self._redirect("/einrichten")
+        if not zugang_reset_moeglich():
+            return self._redirect("/login")
+        form = self._rform()
+        passwort = form.get("passwort", "")
+        if passwort != form.get("passwort2", ""):
+            return self._html(_seite_zuruecksetzen("Die beiden Passwörter stimmen nicht überein."))
+        try:
+            setze_zugang_passwort(passwort)
+        except ValueError as e:
+            return self._html(_seite_zuruecksetzen(str(e)))
+        zugang_alle_fotos_loeschen()
+        self._setze_zugang_cookie_und_redirect("/")
+
     def _authentifiziert(self):
         if not (AUTH_USER and AUTH_PASS):
             return True
@@ -1628,6 +1696,12 @@ class Handler(BaseHTTPRequestHandler):
             if zugang is True:
                 return self._redirect("/")
             return self._html(_seite_login())
+        if p == "/zuruecksetzen":
+            if not zugang_eingerichtet():
+                return self._redirect("/einrichten")
+            if not zugang_reset_moeglich():
+                return self._redirect("/login")
+            return self._html(_seite_zuruecksetzen())
 
         if zugang is None:
             return self._redirect("/einrichten")
@@ -1655,6 +1729,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_einrichten()
         if p == "/login":
             return self._post_login()
+        if p == "/zuruecksetzen":
+            return self._post_zuruecksetzen()
 
         zugang = self._zugang_pruefen()
         if zugang is None:
