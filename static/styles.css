@@ -287,6 +287,19 @@ body{
 .warnhinweis{background:var(--surface); border:1px solid var(--danger-soft-line); color:var(--ink-soft);
   border-radius:8px; padding:.6rem .8rem; font-size:.82rem; margin-bottom:.8rem}
 
+/* Login-/Ersteinrichtungs-Seite (galerie_server.py, _zugang_seite()) - eigene
+   Mini-Seite ausserhalb der SPA, deshalb kein Body-Padding etc. aus #app,
+   braucht eigenes zentriertes Karten-Layout. */
+.zugang-wrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:1.5rem}
+.zugang-karte{max-width:360px; width:100%; background:var(--surface); border:1px solid var(--line);
+  border-radius:var(--radius); padding:1.6rem; box-shadow:var(--shadow); text-align:center}
+.zugang-karte h1{font-size:1.3rem; margin:0 0 .4rem}
+.zugang-form{display:flex; flex-direction:column; gap:.7rem; margin-top:1rem}
+.zugang-form input{font:inherit; padding:.65rem .8rem; border:1px solid var(--line); border-radius:8px;
+  background:var(--bg); color:var(--ink)}
+.zugang-form .btn{margin-top:.3rem}
+.zugang-hinweis{font-size:.78rem; margin-top:1rem}
+
 .pushover-stumm-popup-optionen{display:flex; flex-wrap:wrap; gap:.5rem; justify-content:center; margin-bottom:1rem}
 
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}

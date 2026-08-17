@@ -3,6 +3,10 @@
 BeeTown HonigBox - kleiner Server (nur Python-Standardbibliothek).
 """
 import base64
+import hashlib
+import hmac
+import html
+import http.cookies
 import json
 import mimetypes
 import os
@@ -40,6 +44,151 @@ try:
     os.chmod(EINSTELLUNGEN_DIR, 0o777)
 except OSError:
     pass
+
+# Einfacher "FritzBox-Stil"-Zugangsschutz fuer die Web-Oberflaeche - EIN
+# gemeinsames Passwort fuer alle, kein Benutzerkonto. Ziel: verhindert, dass
+# jemand im selben Netzwerk (z.B. nach einem WLAN-Einbruch) einfach die
+# Foto-Galerie oeffnen kann - schuetzt NICHT gegen jemanden mit direktem
+# Zugriff auf die SD-Karte (dafuer ist die separate Archiv-Verschluesselung
+# gedacht). Bewusst UNABHAENGIG von AUTH_USER/AUTH_PASS oben (das ist ein
+# optionaler, nur per Hand ueber systemd-Environment aktivierbarer
+# HTTP-Basic-Auth-Schalter fuer technisch versierte Nutzer - dieses
+# In-App-Passwort ist die eigentliche, fuer alle gedachte Absicherung).
+ZUGANG_PATH = os.path.join(EINSTELLUNGEN_DIR, ".zugang.json")
+ZUGANG_COOKIE_NAME = "honigbox_zugang"
+ZUGANG_COOKIE_MAX_AGE = 10 * 365 * 86400  # ~10 Jahre - "nie wieder fragen"
+ZUGANG_PBKDF2_ITERATIONEN = 200_000
+ZUGANG_MINDESTLAENGE = 4
+# Fuer die Testsuite (siehe tests/conftest.py) - ohne das wuerde JEDE
+# Testanfrage auf die Ersteinrichtungs-Seite umgeleitet, da in den isolierten
+# Test-Verzeichnissen nie ein Zugangs-Passwort gesetzt ist.
+ZUGANG_DEAKTIVIERT = os.environ.get("GALERIE_ZUGANG_AUS", "") == "1"
+
+
+def zugang_eingerichtet():
+    return os.path.isfile(ZUGANG_PATH)
+
+
+def _lade_zugang():
+    try:
+        with open(ZUGANG_PATH) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def setze_zugang_passwort(passwort):
+    """Setzt ein (neues) Passwort - fuer die Ersteinrichtung genauso wie fuer
+    einen spaeteren Reset. Erzeugt dabei immer ein neues server_secret,
+    wodurch alle bisher ausgestellten Anmelde-Cookies (auch in ANDEREN
+    Browsern) automatisch ungueltig werden - ein Reset meldet also ueberall
+    ab, nicht nur im aktuellen Browser."""
+    passwort = str(passwort or "")
+    if len(passwort) < ZUGANG_MINDESTLAENGE:
+        raise ValueError(f"Passwort muss mindestens {ZUGANG_MINDESTLAENGE} Zeichen haben")
+    salt = secrets.token_bytes(16)
+    hash_ = hashlib.pbkdf2_hmac("sha256", passwort.encode(), salt, ZUGANG_PBKDF2_ITERATIONEN)
+    daten = {"hash": hash_.hex(), "salt": salt.hex(), "server_secret": secrets.token_hex(32)}
+    with open(ZUGANG_PATH, "w") as f:
+        json.dump(daten, f)
+    try:
+        os.chmod(ZUGANG_PATH, 0o600)
+    except OSError:
+        pass
+    return daten
+
+
+def pruefe_zugang_passwort(passwort):
+    """hmac.compare_digest statt == , damit die Vergleichsdauer selbst kein
+    Seitenkanal ist, der Rueckschluesse auf einzelne richtige Zeichen erlaubt."""
+    daten = _lade_zugang()
+    if not daten:
+        return False
+    try:
+        salt = bytes.fromhex(daten["salt"])
+        erwartet = bytes.fromhex(daten["hash"])
+    except (KeyError, ValueError, TypeError):
+        return False
+    hash_ = hashlib.pbkdf2_hmac("sha256", str(passwort or "").encode(), salt, ZUGANG_PBKDF2_ITERATIONEN)
+    return hmac.compare_digest(hash_, erwartet)
+
+
+def _zugang_cookie_sollwert():
+    daten = _lade_zugang()
+    if not daten:
+        return None
+    try:
+        secret = bytes.fromhex(daten["server_secret"])
+    except (KeyError, ValueError, TypeError):
+        return None
+    return hmac.new(secret, b"honigbox-zugang-v1", hashlib.sha256).hexdigest()
+
+
+def zugang_cookie_gueltig(cookie_header):
+    sollwert = _zugang_cookie_sollwert()
+    if not sollwert:
+        return False
+    try:
+        cookies = http.cookies.SimpleCookie(cookie_header or "")
+    except http.cookies.CookieError:
+        return False
+    morsel = cookies.get(ZUGANG_COOKIE_NAME)
+    if not morsel:
+        return False
+    return hmac.compare_digest(morsel.value, sollwert)
+
+
+_ZUGANG_SEITE_TEMPLATE = """<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1e1a14">
+<meta name="color-scheme" content="light dark">
+<script>try{var t=localStorage.getItem('honigbox-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<title>BeeTown HonigBox</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="zugang-wrap">
+  <div class="zugang-karte">
+    <h1>\U0001F36F BeeTown HonigBox</h1>
+    <p class="muted">__INTRO__</p>
+    __FEHLER__
+    __FORMULAR__
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+def _zugang_seite(intro, formular_html, fehler=None):
+    fehler_html = f'<p class="warnhinweis">{html.escape(fehler)}</p>' if fehler else ""
+    return (_ZUGANG_SEITE_TEMPLATE
+            .replace("__INTRO__", html.escape(intro))
+            .replace("__FEHLER__", fehler_html)
+            .replace("__FORMULAR__", formular_html))
+
+
+def _seite_einrichten(fehler=None):
+    formular = """<form method="POST" action="/einrichten" class="zugang-form">
+      <input type="password" name="passwort" placeholder="Neues Passwort" minlength="4" required autofocus>
+      <input type="password" name="passwort2" placeholder="Passwort wiederholen" minlength="4" required>
+      <button type="submit" class="btn btn-primary">Passwort festlegen</button>
+    </form>
+    <p class="muted zugang-hinweis">Wird nur EINMAL abgefragt - danach merkt sich dieser Browser den
+    Zugang dauerhaft. Lässt sich später in den Einstellungen zurücksetzen.</p>"""
+    return _zugang_seite(
+        "Willkommen! Bitte lege ein Passwort für den Zugriff auf diese Seite fest.", formular, fehler)
+
+
+def _seite_login(fehler=None):
+    formular = """<form method="POST" action="/login" class="zugang-form">
+      <input type="password" name="passwort" placeholder="Passwort" required autofocus>
+      <button type="submit" class="btn btn-primary">Anmelden</button>
+    </form>"""
+    return _zugang_seite("Bitte Passwort eingeben.", formular, fehler)
 
 
 def _migriere_alte_einstellungsdatei(alter_pfad, neuer_pfad):
@@ -1376,6 +1525,69 @@ class Handler(BaseHTTPRequestHandler):
         except (json.JSONDecodeError, UnicodeDecodeError):
             return {}
 
+    def _rform(self):
+        """Wie _rjson(), aber fuer normale HTML-<form>-POSTs (Login/
+        Ersteinrichtung) - die schicken application/x-www-form-urlencoded,
+        kein JSON."""
+        laenge = int(self.headers.get("Content-Length", 0))
+        if laenge <= 0:
+            return {}
+        try:
+            rohdaten = self.rfile.read(laenge).decode()
+        except UnicodeDecodeError:
+            return {}
+        return {k: v[0] for k, v in parse_qs(rohdaten).items()}
+
+    def _html(self, text, code=200):
+        self._bytes(text.encode(), "text/html; charset=utf-8", code)
+
+    def _redirect(self, ziel):
+        self.send_response(302)
+        self.send_header("Location", ziel)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _zugang_pruefen(self):
+        """None = Ersteinrichtung noetig, True = eingeloggt, False = Login noetig."""
+        if ZUGANG_DEAKTIVIERT:
+            return True
+        if not zugang_eingerichtet():
+            return None
+        return zugang_cookie_gueltig(self.headers.get("Cookie"))
+
+    def _setze_zugang_cookie_und_redirect(self, ziel):
+        wert = _zugang_cookie_sollwert()
+        self.send_response(302)
+        self.send_header("Location", ziel)
+        self.send_header(
+            "Set-Cookie",
+            f"{ZUGANG_COOKIE_NAME}={wert}; Max-Age={ZUGANG_COOKIE_MAX_AGE}; Path=/; HttpOnly; SameSite=Lax",
+        )
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _post_einrichten(self):
+        if zugang_eingerichtet():
+            return self._redirect("/")
+        form = self._rform()
+        passwort = form.get("passwort", "")
+        if passwort != form.get("passwort2", ""):
+            return self._html(_seite_einrichten("Die beiden Passwörter stimmen nicht überein."))
+        try:
+            setze_zugang_passwort(passwort)
+        except ValueError as e:
+            return self._html(_seite_einrichten(str(e)))
+        self._setze_zugang_cookie_und_redirect("/")
+
+    def _post_login(self):
+        if not zugang_eingerichtet():
+            return self._redirect("/einrichten")
+        form = self._rform()
+        if not pruefe_zugang_passwort(form.get("passwort", "")):
+            time.sleep(0.3)  # winziger Bremsklotz gegen automatisiertes Durchprobieren
+            return self._html(_seite_login("Falsches Passwort."))
+        self._setze_zugang_cookie_und_redirect("/")
+
     def _authentifiziert(self):
         if not (AUTH_USER and AUTH_PASS):
             return True
@@ -1398,6 +1610,30 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authentifiziert():
             return self._login_verlangen()
         p = self.path.split("?", 1)[0]
+
+        # styles.css muss auch ohne Zugangs-Cookie erreichbar sein, sonst
+        # liesse sich die Login-/Ersteinrichtungs-Seite selbst nicht stylen.
+        if p == "/styles.css":
+            return self.serve_static(p)
+
+        zugang = self._zugang_pruefen()
+
+        if p == "/einrichten":
+            if zugang_eingerichtet():
+                return self._redirect("/")
+            return self._html(_seite_einrichten())
+        if p == "/login":
+            if zugang is None:
+                return self._redirect("/einrichten")
+            if zugang is True:
+                return self._redirect("/")
+            return self._html(_seite_login())
+
+        if zugang is None:
+            return self._redirect("/einrichten")
+        if zugang is False:
+            return self._redirect("/login")
+
         if p.startswith("/api/"):
             return self.api_get(p)
         if p.startswith("/bilder/"):
@@ -1414,6 +1650,18 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authentifiziert():
             return self._login_verlangen()
         p = self.path.split("?", 1)[0]
+
+        if p == "/einrichten":
+            return self._post_einrichten()
+        if p == "/login":
+            return self._post_login()
+
+        zugang = self._zugang_pruefen()
+        if zugang is None:
+            return self._redirect("/einrichten")
+        if zugang is False:
+            return self._redirect("/login")
+
         if p.startswith("/api/"):
             try:
                 return self.api_post(p)

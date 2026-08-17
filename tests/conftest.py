@@ -36,6 +36,11 @@ def galerie_env(tmp_path, monkeypatch):
     monkeypatch.setenv("GALERIE_STATIC", str(os.path.join(REPO_ROOT, "static")))
     monkeypatch.setenv("GALERIE_USER", "")
     monkeypatch.setenv("GALERIE_PASSWORT", "")
+    # Das In-App-Zugangs-Passwort-Gate ist fuer die allermeisten Tests hier
+    # irrelevant und wuerde sonst JEDE Anfrage auf /einrichten umleiten (in
+    # den isolierten Test-Verzeichnissen ist ja nie ein Zugang gesetzt) -
+    # siehe test_zugang.py fuer die dedizierten Tests OHNE dieses Flag.
+    monkeypatch.setenv("GALERIE_ZUGANG_AUS", "1")
 
     import galerie_server
     importlib.reload(galerie_server)

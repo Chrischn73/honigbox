@@ -67,6 +67,7 @@ def cross_device_server(tmp_path, monkeypatch):
     monkeypatch.setenv("GALERIE_STATIC", str(os.path.join(REPO_ROOT, "static")))
     monkeypatch.setenv("GALERIE_USER", "")
     monkeypatch.setenv("GALERIE_PASSWORT", "")
+    monkeypatch.setenv("GALERIE_ZUGANG_AUS", "1")
 
     import galerie_server
     importlib.reload(galerie_server)
