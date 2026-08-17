@@ -223,6 +223,66 @@ def _seite_zuruecksetzen(fehler=None):
         formular, fehler)
 
 
+_ARCHIV_CONTAINER_LABEL = {"archiv": "Foto-Archiv", "bilder": "Aktuelle Fotos (Platte-Modus)"}
+
+
+def _seite_archiv_schluessel(fehler=None):
+    zustand = _archiv_schluessel_status()
+    hinweise = []
+    wartet = False
+    bundle = {}
+
+    for name, label in _ARCHIV_CONTAINER_LABEL.items():
+        status = zustand[name]["status"]
+        if status is None:
+            continue
+        if status == "locked":
+            wartet = True
+            hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe (oder auf Zeitüberschreitung).</p>")
+        elif status == "fresh" and zustand[name]["schluessel"]:
+            bundle[name] = zustand[name]["schluessel"]
+            hinweise.append(f"<p>{html.escape(label)}: neuer Container angelegt.</p>")
+        elif status == "unlocked":
+            hinweise.append(f"<p>{html.escape(label)}: mit gesichertem Schlüssel wiederhergestellt.</p>")
+        elif status == "fresh":
+            hinweise.append(f"<p>{html.escape(label)}: Container aktiv (Schlüssel bereits bestätigt).</p>")
+        elif status == "fehler":
+            hinweise.append(f"<p>{html.escape(label)}: Fehler beim Einrichten - bitte Gerät neu starten oder Logs prüfen.</p>")
+
+    formular = "".join(hinweise)
+
+    if wartet:
+        formular += """
+        <form method="POST" action="/archiv-schluessel" class="zugang-form">
+          <input type="hidden" name="aktion" value="eingabe">
+          <textarea name="schluessel" rows="4" placeholder="Gesicherte Schlüssel-Datei hier einfügen" required></textarea>
+          <button type="submit" class="btn btn-primary">Wiederherstellen</button>
+        </form>
+        <form method="POST" action="/archiv-schluessel" class="zugang-form">
+          <input type="hidden" name="aktion" value="verwerfen">
+          <button type="submit" class="btn btn-danger">Nein, frisch anfangen (alter Bestand geht verloren)</button>
+        </form>
+        <meta http-equiv="refresh" content="4">
+        """
+    elif bundle:
+        bundle_b64 = base64.b64encode(json.dumps(bundle).encode()).decode()
+        formular += f"""
+        <p class="warnhinweis">Diesen Schlüssel jetzt auf einen externen PC sichern - danach ist
+        er hier nicht mehr abrufbar! Ohne ihn ist der jeweilige Bestand nach einem künftigen
+        Neustart ohne erneute Eingabe unwiderruflich weg.</p>
+        <a class="btn btn-primary" download="honigbox-schluessel.json"
+           href="data:application/json;base64,{bundle_b64}">Schlüssel herunterladen</a>
+        <form method="POST" action="/archiv-schluessel" class="zugang-form">
+          <input type="hidden" name="aktion" value="bestaetigt">
+          <button type="submit" class="btn btn-danger">Ich habe den Schlüssel gesichert</button>
+        </form>
+        """
+    else:
+        formular += '<a class="btn btn-primary" href="/">Weiter zur HonigBox</a>'
+
+    return _zugang_seite("Verschlüsselungs-Schlüssel für das Foto-Archiv", formular, fehler)
+
+
 def _migriere_alte_einstellungsdatei(alter_pfad, neuer_pfad):
     """Fruehere HonigBox-Versionen legten alle Einstellungsdateien in
     BILDER_DIR ab - seit es die RAM-Disk-Option gibt, muessen sie in
@@ -537,7 +597,13 @@ PUSHOVER_STANDARD = {
 }
 
 os.makedirs(BILDER_DIR, exist_ok=True)
-os.makedirs(ARCHIV_DIR, exist_ok=True)
+# ARCHIV_DIR wird NICHT mehr hier unbedingt angelegt (siehe archiv_bereit()
+# weiter unten, Phase C): ist die LUKS-Archiv-Verschluesselung aktiv, kann
+# ARCHIV_DIR ein noch nicht eingehaengter Mountpoint sein - ein bedingungsloses
+# os.makedirs() wuerde sonst versehentlich einen leeren Platzhalter-Ordner
+# direkt auf der unverschluesselten Root-Partition anlegen. Ohne Phase C
+# (keine Status-Datei vorhanden) verhaelt sich archiv_bereit() weiterhin
+# genau wie dieser alte, unbedingte Aufruf.
 
 ERLAUBTE_ENDUNGEN = {".jpg", ".jpeg", ".png"}
 DATEINAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,255}$")
@@ -559,14 +625,103 @@ def liste_bilder(verzeichnis):
     return dateien
 
 
-# Bewusst IN ARCHIV_DIR (nicht EINSTELLUNGEN_DIR) abgelegt: das Fotos-Backup
-# im Setup-Portal sichert nur "fotos/" (Bilder+Archiv), nicht "einstellungen/"
-# - eine Notiz wie "Diebstahl, 4€ fehlte" soll aber genau wie das zugehoerige
-# Foto im Backup landen. ARCHIV_DIR ist ausserdem nie eine RAM-Disk (siehe
-# Speicher-Einstellungen weiter unten), geht also auch bei aktivem tmpfs nie
-# beim naechsten Neustart verloren.
+# Bewusst IN ARCHIV_DIR (nicht EINSTELLUNGEN_DIR) abgelegt, damit eine Notiz
+# wie "Diebstahl, 4€ fehlte" untrennbar am zugehoerigen Foto haengt (z.B. bei
+# einer manuellen Sicherung des Archiv-Ordners). ARCHIV_DIR ist ausserdem nie
+# eine RAM-Disk (siehe Speicher-Einstellungen weiter unten), geht also auch
+# bei aktivem tmpfs fuer BILDER_DIR nie beim naechsten Neustart verloren -
+# das automatische Backup selbst sichert seit Phase C/E nur noch
+# "einstellungen/", nie mehr Fotos (siehe setup/honigbox-backup.sh).
 ARCHIV_NOTIZEN_DATEI = os.path.join(ARCHIV_DIR, ".archiv-notizen.json")
 NOTIZ_MAX_LAENGE = 300
+
+# Phase C: LUKS-Archiv-Verschluesselung. Ohne sie (keine Status-Datei
+# vorhanden, z.B. in Tests oder auf noch nicht migrierten Installationen)
+# verhaelt sich archiv_bereit() genau wie das frueher unbedingte
+# os.makedirs(ARCHIV_DIR, exist_ok=True) - siehe Kommentar weiter oben.
+ARCHIV_STATUS_PATH = os.environ.get("GALERIE_ARCHIV_STATUS", "/run/honigbox/archiv-status")
+ARCHIV_RUN_DIR = os.environ.get("GALERIE_ARCHIV_RUN_DIR", "/run/honigbox")
+ARCHIV_SCHLUESSEL_PATH = os.path.join(ARCHIV_RUN_DIR, "archiv-key")
+BILDER_SCHLUESSEL_PATH = os.path.join(ARCHIV_RUN_DIR, "bilder-key")
+BILDER_STATUS_PATH = os.environ.get("GALERIE_BILDER_STATUS", "/run/honigbox/bilder-status")
+
+
+def archiv_bereit():
+    """True, wenn ARCHIV_DIR gerade beschreib-/lesbar ist. Mit aktiver
+    LUKS-Verschluesselung (siehe archiv_entschluesseln.sh/
+    honigbox-archiv-entschluesseln.service) muss der Container zuerst
+    geoeffnet oder frisch angelegt worden sein (Status "unlocked"/"fresh"),
+    sonst waere ARCHIV_DIR noch ein leerer, nicht gemounteter Platzhalter."""
+    try:
+        with open(ARCHIV_STATUS_PATH) as f:
+            status = f.read().strip()
+    except OSError:
+        os.makedirs(ARCHIV_DIR, exist_ok=True)
+        return True
+    return status in ("unlocked", "fresh")
+
+
+def _lese_datei_falls_vorhanden(pfad):
+    try:
+        with open(pfad) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+# Wie lange der frisch erzeugte Klartext-Schluessel nach dem Anlegen eines
+# neuen Containers noch abrufbar bleibt, falls der Nutzer nicht aktiv
+# bestaetigt, ihn gesichert zu haben - danach automatisch geloescht (siehe
+# _archiv_schluessel_status()). Bewusst kein Dauerzugriff: der Schluessel
+# soll nur EINMALIG beim Erzeugen abrufbar sein, nicht dauerhaft ueber die
+# Laufzeit hinweg.
+ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK = 10 * 60
+
+
+def _archiv_schluessel_status():
+    """Sammelt den aktuellen Zustand beider Container (Archiv, aktuelle
+    Fotos im Platte-Modus) fuer die Anzeige auf /archiv-schluessel. Loescht
+    dabei nebenbei einen abgelaufenen, unbestaetigten Klartext-Schluessel
+    (siehe ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK)."""
+    ergebnis = {}
+    for name, status_pfad, key_pfad in (
+        ("archiv", ARCHIV_STATUS_PATH, ARCHIV_SCHLUESSEL_PATH),
+        ("bilder", BILDER_STATUS_PATH, BILDER_SCHLUESSEL_PATH),
+    ):
+        status = _lese_datei_falls_vorhanden(status_pfad)
+        schluessel = None
+        if status == "fresh":
+            try:
+                if time.time() - os.path.getmtime(key_pfad) > ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK:
+                    os.remove(key_pfad)
+                else:
+                    schluessel = _lese_datei_falls_vorhanden(key_pfad)
+            except OSError:
+                pass
+        ergebnis[name] = {"status": status, "schluessel": schluessel}
+    return ergebnis
+
+
+def _archiv_schluessel_erforderlich():
+    """True, wenn die Web-Oberflaeche auf /archiv-schluessel umleiten muss,
+    weil fuer mindestens einen Container noch eine Nutzer-Entscheidung
+    ausstehend ist (Schluessel eingeben/verwerfen, oder einen frisch
+    erzeugten Schluessel bestaetigen). Ohne Phase C (keine Status-Dateien
+    vorhanden) bleibt das immer False."""
+    for eintrag in _archiv_schluessel_status().values():
+        if eintrag["status"] == "locked":
+            return True
+        if eintrag["status"] == "fresh" and eintrag["schluessel"]:
+            return True
+    return False
+
+
+def _archiv_eingabe_schreiben(name, wert):
+    try:
+        with open(os.path.join(ARCHIV_RUN_DIR, f"{name}-eingabe"), "w") as f:
+            f.write(wert)
+    except OSError:
+        pass
 
 
 def lade_archiv_notizen():
@@ -1666,6 +1821,39 @@ class Handler(BaseHTTPRequestHandler):
         zugang_alle_fotos_loeschen()
         self._setze_zugang_cookie_und_redirect("/")
 
+    def _post_archiv_schluessel(self):
+        form = self._rform()
+        aktion = form.get("aktion", "")
+        zustand = _archiv_schluessel_status()
+
+        if aktion == "eingabe":
+            try:
+                bundle = json.loads(form.get("schluessel", ""))
+            except (json.JSONDecodeError, TypeError):
+                bundle = None
+            if not isinstance(bundle, dict):
+                return self._html(_seite_archiv_schluessel(
+                    "Ungültiges Format - bitte die heruntergeladene Datei unverändert einfügen."))
+            for name in _ARCHIV_CONTAINER_LABEL:
+                if zustand[name]["status"] != "locked":
+                    continue
+                wert = bundle.get(name)
+                if isinstance(wert, str) and wert:
+                    _archiv_eingabe_schreiben(name, wert)
+        elif aktion == "verwerfen":
+            for name in _ARCHIV_CONTAINER_LABEL:
+                if zustand[name]["status"] == "locked":
+                    _archiv_eingabe_schreiben(name, "NEU")
+        elif aktion == "bestaetigt":
+            for name, key_pfad in (("archiv", ARCHIV_SCHLUESSEL_PATH), ("bilder", BILDER_SCHLUESSEL_PATH)):
+                if zustand[name]["status"] == "fresh":
+                    try:
+                        os.remove(key_pfad)
+                    except OSError:
+                        pass
+
+        return self._redirect("/archiv-schluessel")
+
     def _authentifiziert(self):
         if not (AUTH_USER and AUTH_PASS):
             return True
@@ -1718,16 +1906,33 @@ class Handler(BaseHTTPRequestHandler):
         if zugang is False:
             return self._redirect("/login")
 
+        if p == "/archiv-schluessel":
+            return self._html(_seite_archiv_schluessel())
+
         if p.startswith("/api/"):
             return self.api_get(p)
         if p.startswith("/bilder/"):
             return self.serve_bild(p, BILDER_DIR, "/bilder/")
         if p.startswith("/archiv-bilder/"):
+            if not archiv_bereit():
+                return self._err(503, "Archiv ist gerade nicht verfügbar (Verschlüsselung noch nicht entsperrt).")
             return self.serve_bild(p, ARCHIV_DIR, "/archiv-bilder/")
         if p.startswith("/thumbs/"):
             return self.serve_thumb(p, BILDER_DIR, "/thumbs/")
         if p.startswith("/archiv-thumbs/"):
+            if not archiv_bereit():
+                return self._err(503, "Archiv ist gerade nicht verfügbar (Verschlüsselung noch nicht entsperrt).")
             return self.serve_thumb(p, ARCHIV_DIR, "/archiv-thumbs/")
+
+        # Nur die eigentliche HTML-Seite wird umgeleitet, wenn eine
+        # Schluessel-Entscheidung ausstellt (siehe _archiv_schluessel_erforderlich)
+        # - statische Assets (app.js/styles.css/Icons) muessen weiter laden
+        # koennen, sonst wuerde die bereits laufende Seite nie mehr etwas
+        # nachladen, und /api/-Routen antworten stattdessen mit einem klaren
+        # 503-JSON-Fehler (siehe archiv_bereit()-Pruefungen oben) statt einer
+        # HTML-Umleitung, die ein fetch()-basiertes Frontend nicht erwartet.
+        if p in ("", "/") and _archiv_schluessel_erforderlich():
+            return self._redirect("/archiv-schluessel")
         self.serve_static(p)
 
     def do_POST(self):
@@ -1747,6 +1952,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._redirect("/einrichten")
         if zugang is False:
             return self._redirect("/login")
+
+        if p == "/archiv-schluessel":
+            return self._post_archiv_schluessel()
 
         if p.startswith("/api/"):
             try:
@@ -1801,6 +2009,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/photos":
             q = parse_qs(urlparse(self.path).query)
             archiv = (q.get("archiv") or ["0"])[0] == "1"
+            if archiv and not archiv_bereit():
+                return self._err(503, "Archiv ist gerade nicht verfügbar (Verschlüsselung noch nicht entsperrt).")
             antwort = {"bilder": liste_bilder(ARCHIV_DIR if archiv else BILDER_DIR)}
             if archiv:
                 antwort["notizen"] = lade_archiv_notizen()
@@ -1842,6 +2052,7 @@ class Handler(BaseHTTPRequestHandler):
                 "pushover_stumm_rest_sekunden": pushover_stumm_rest_sekunden(),
                 "fotos_pause_rest_sekunden": fotos_pause_rest_sekunden(),
                 "foto_testmodus_rest_sekunden": foto_testmodus_rest_sekunden(),
+                "archiv_bereit": archiv_bereit(),
             })
         if path == "/api/foto/testmodus":
             return self._json({"rest_sekunden": foto_testmodus_rest_sekunden()})
@@ -1849,6 +2060,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def api_post(self, path):
         if path == "/api/photos/archivieren":
+            if not archiv_bereit():
+                return self._err(503, "Archiv ist gerade nicht verfügbar (Verschlüsselung noch nicht entsperrt).")
             body = self._rjson()
             archiviert = 0
             for roh in body.get("dateien", []):
@@ -1870,6 +2083,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/photos/loeschen":
             body = self._rjson()
             archiv = bool(body.get("archiv", False))
+            if archiv and not archiv_bereit():
+                return self._err(503, "Archiv ist gerade nicht verfügbar (Verschlüsselung noch nicht entsperrt).")
             verzeichnis = ARCHIV_DIR if archiv else BILDER_DIR
             geloescht = 0
             for roh in body.get("dateien", []):
@@ -1886,6 +2101,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"geloescht": geloescht})
 
         if path == "/api/archiv/notiz":
+            if not archiv_bereit():
+                return self._err(503, "Archiv ist gerade nicht verfügbar (Verschlüsselung noch nicht entsperrt).")
             body = self._rjson()
             dateiname = sichere_dateiname(body.get("datei", ""))
             if not dateiname or not os.path.isfile(os.path.join(ARCHIV_DIR, dateiname)):

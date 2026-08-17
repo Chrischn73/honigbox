@@ -1,0 +1,25 @@
+[Unit]
+Description=HonigBox - Archiv- und Bilder-LUKS-Container oeffnen/anlegen
+# Bewusst KEIN Requires=/Before= zu honigbox-galerie.service in beide
+# Richtungen: die Schluesseleingabe passiert ueber die Route
+# /archiv-schluessel in galerie_server.py selbst. Wuerde dieser Dienst
+# erst NACH abgeschlossener Entschluesselung starten duerfen, koennte
+# niemand je einen Schluessel eingeben (Deadlock). galerie_server.py
+# prueft den Status stattdessen laufend selbst (siehe archiv_bereit()).
+After=local-fs.target haveged.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/honigbox/archiv_entschluesseln.sh
+# Grosszuegig bemessen: bis zu 120s Wartezeit auf eine Schluessel-Eingabe
+# plus die Formatierzeit fuer ZWEI 512-MB-Container auf einer SD-Karte
+# muessen hier reinpassen. Ein durch TimeoutStartSec erzwungener SIGKILL
+# mitten in cryptsetup/mkfs wuerde einen dauerhaft korrupten Container
+# hinterlassen - lieber grosszuegig als knapp.
+TimeoutStartSec=480
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

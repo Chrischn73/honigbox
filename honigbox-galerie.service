@@ -16,6 +16,9 @@ Environment=GALERIE_PORT=8090
 Environment=GALERIE_STATIC=/opt/honigbox/static
 Environment=GALERIE_BILDER=/opt/honigbox/fotos/Bilder
 Environment=GALERIE_ARCHIV=/opt/honigbox/fotos/Archiv
+Environment=GALERIE_ARCHIV_STATUS=/run/honigbox/archiv-status
+Environment=GALERIE_BILDER_STATUS=/run/honigbox/bilder-status
+Environment=GALERIE_ARCHIV_RUN_DIR=/run/honigbox
 Environment=PYTHONUNBUFFERED=1
 # Zum Absichern per Basic-Auth zwei Zeilen einkommentieren und Werte setzen:
 #Environment=GALERIE_USER=honig

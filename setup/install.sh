@@ -49,15 +49,16 @@ log() { echo; echo "==> $*"; }
 
 # ---------------------------------------------------------------------------
 log "Pruefe benoetigte Dateien in $PROJECT_DIR"
-for f in honigbox.sh foto.sh send_pushover.sh send_telegram.sh galerie_server.py speicher_umschalten.sh static \
-         honigbox.service honigbox-galerie.service; do
+for f in honigbox.sh foto.sh send_pushover.sh send_telegram.sh galerie_server.py speicher_umschalten.sh \
+         archiv_entschluesseln.sh static honigbox.service honigbox-galerie.service; do
     if [ ! -e "$PROJECT_DIR/$f" ]; then
         echo "FEHLER: $PROJECT_DIR/$f fehlt. Wurde der komplette Projekt-Ordner uebertragen?"
         exit 1
     fi
 done
 for f in honigbox-backup.sh honigbox-backup-rotate.py honigbox-backup.service honigbox-backup.timer \
-         honigbox-update-check.service honigbox-update-check.timer; do
+         honigbox-update-check.service honigbox-update-check.timer \
+         honigbox-archiv-entschluesseln.service honigbox-archiv-tmpfiles.conf; do
     if [ ! -e "$SETUP_DIR/$f" ]; then
         echo "FEHLER: $SETUP_DIR/$f fehlt."
         exit 1
@@ -104,6 +105,12 @@ apt-get install -y rpicam-apps || apt-get install -y libcamera-apps || \
 # Weboberflaeche einfach wirkungslos (foto.sh loescht dann nichts, siehe dort).
 apt-get install -y python3-pil || \
     echo "WARNUNG: Konnte python3-pil nicht installieren - 'Zu dunkle Fotos automatisch löschen' wird dann nichts löschen."
+# Fuer die Archiv-Verschluesselung (Phase C, siehe archiv_entschluesseln.sh):
+# cryptsetup-bin fuer LUKS, haveged fuer ausreichende Zufalls-Entropie beim
+# Erzeugen neuer Schluessel/Container kurz nach dem Booten (ohne das koennte
+# das sonst auf einem Raspberry Pi spuerbar haengen).
+apt-get install -y cryptsetup-bin haveged
+systemctl enable --now haveged
 
 # ---------------------------------------------------------------------------
 log "SSH aktivieren"
@@ -168,13 +175,14 @@ sicher_kopieren "$PROJECT_DIR/send_pushover.sh" /opt/honigbox/send_pushover.sh
 sicher_kopieren "$PROJECT_DIR/send_telegram.sh" /opt/honigbox/send_telegram.sh
 sicher_kopieren "$PROJECT_DIR/galerie_server.py" /opt/honigbox/galerie_server.py
 sicher_kopieren "$PROJECT_DIR/speicher_umschalten.sh" /opt/honigbox/speicher_umschalten.sh
+sicher_kopieren "$PROJECT_DIR/archiv_entschluesseln.sh" /opt/honigbox/archiv_entschluesseln.sh
 sicher_kopiere_ordner "$PROJECT_DIR/static" /opt/honigbox/static
 
 # Wichtig: die Shell-Scripte brauchen das Ausfuehrungsrecht, sonst bricht
 # honigbox.sh beim Aufruf mit "Permission denied" ab (ist uns schon einmal
 # so passiert).
 chmod +x /opt/honigbox/honigbox.sh /opt/honigbox/foto.sh /opt/honigbox/send_pushover.sh \
-    /opt/honigbox/send_telegram.sh /opt/honigbox/speicher_umschalten.sh
+    /opt/honigbox/send_telegram.sh /opt/honigbox/speicher_umschalten.sh /opt/honigbox/archiv_entschluesseln.sh
 
 # Pushover-Zugangsdaten nur beim allerersten Einrichten anlegen, damit ein
 # spaeter ueber die Web-UI gespeicherter echter Token bei einem erneuten
@@ -254,6 +262,12 @@ cp "$SETUP_DIR/honigbox-update-check.service" /etc/systemd/system/honigbox-updat
 cp "$SETUP_DIR/honigbox-update-check.timer" /etc/systemd/system/honigbox-update-check.timer
 
 # ---------------------------------------------------------------------------
+log "Archiv-Verschluesselung einrichten (Phase C)"
+cp "$SETUP_DIR/honigbox-archiv-entschluesseln.service" /etc/systemd/system/honigbox-archiv-entschluesseln.service
+cp "$SETUP_DIR/honigbox-archiv-tmpfiles.conf" /etc/tmpfiles.d/honigbox-archiv.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/honigbox-archiv.conf
+
+# ---------------------------------------------------------------------------
 log "Berechtigungen fuer den Galerie-Dienst (www-data)"
 # www-data (siehe honigbox-galerie.service) braucht Kamera-Zugriff fuer den
 # "Foto aufnehmen"-Button, und eine gezielte sudo-Freigabe fuer die
@@ -327,9 +341,12 @@ cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
       {"src": "send_telegram.sh", "dest": "/opt/honigbox/send_telegram.sh", "mode": "0755"},
       {"src": "galerie_server.py", "dest": "/opt/honigbox/galerie_server.py", "mode": "0644", "chown": "www-data:www-data"},
       {"src": "speicher_umschalten.sh", "dest": "/opt/honigbox/speicher_umschalten.sh", "mode": "0755"},
+      {"src": "archiv_entschluesseln.sh", "dest": "/opt/honigbox/archiv_entschluesseln.sh", "mode": "0755"},
       {"src": "static", "dest": "/opt/honigbox/static", "mode": "dir", "chown": "www-data:www-data"},
       {"src": "honigbox.service", "dest": "/etc/systemd/system/honigbox.service", "mode": "0644"},
-      {"src": "honigbox-galerie.service", "dest": "/etc/systemd/system/honigbox-galerie.service", "mode": "0644"}
+      {"src": "honigbox-galerie.service", "dest": "/etc/systemd/system/honigbox-galerie.service", "mode": "0644"},
+      {"src": "setup/honigbox-archiv-entschluesseln.service", "dest": "/etc/systemd/system/honigbox-archiv-entschluesseln.service", "mode": "0644"},
+      {"src": "setup/honigbox-archiv-tmpfiles.conf", "dest": "/etc/tmpfiles.d/honigbox-archiv.conf", "mode": "0644"}
     ],
     "services_to_restart": ["honigbox.service", "honigbox-galerie.service"]
   },
@@ -384,6 +401,7 @@ bash /opt/honigbox/speicher_umschalten.sh || \
 # ---------------------------------------------------------------------------
 log "systemd-Dienste aktivieren"
 systemctl daemon-reload
+systemctl enable --now honigbox-archiv-entschluesseln.service
 systemctl enable --now honigbox.service
 systemctl restart honigbox.service
 systemctl enable --now honigbox-galerie.service

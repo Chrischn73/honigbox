@@ -74,14 +74,47 @@ TUER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-einstellungen.j
 # Datei/Zeitstempel getrennt von der Messenger-Stummschaltung, damit "Fotos aus"
 # unabhaengig von "Messenger aus" funktioniert (drei Buttons auf der Startseite).
 FOTOS_PAUSE_PATH = os.path.join(EINSTELLUNGEN_DIR, ".fotos-pause-bis.json")
+# Phase C: LUKS-Verschluesselung der aktuellen Fotos im "Platte"-Speichermodus
+# (RAM-Disk-Modus braucht das nicht). Pfade muessen identisch mit den in
+# archiv_entschluesseln.sh (RUN_DIR-Konvention "<name>-status") erzeugten
+# bzw. GALERIE_BILDER_STATUS in galerie_server.py verwendeten sein.
+SPEICHER_EINSTELLUNGEN_DATEI = os.path.join(EINSTELLUNGEN_DIR, ".speicher-einstellungen.json")
+BILDER_STATUS_PATH = "/run/honigbox/bilder-status"
+
+
+def foto_speicher_nicht_bereit():
+    """True, wenn der Speicherort 'platte' ist UND der verschluesselte
+    Bilder-Container beim Boot noch nicht entschluesselt/angelegt wurde
+    (siehe archiv_entschluesseln.sh) - verhindert, dass in genau diesem
+    kurzen Boot-Fenster ein Foto unverschluesselt direkt auf die
+    Root-Partition statt in den LUKS-Mount geschrieben wird. Im
+    RAM-Disk-Modus immer False (tmpfs ist unabhaengig davon schon durch
+    RequiresMountsFor in honigbox.service abgesichert)."""
+    try:
+        with open(SPEICHER_EINSTELLUNGEN_DATEI) as f:
+            speicherort = json.load(f).get("speicherort", "ram")
+    except (OSError, json.JSONDecodeError):
+        speicherort = "ram"
+    if speicherort != "platte":
+        return False
+    try:
+        with open(BILDER_STATUS_PATH) as f:
+            status = f.read().strip()
+    except OSError:
+        return True  # noch keine Status-Datei -> Container noch nicht bereit
+    return status not in ("unlocked", "fresh")
 
 
 def fotos_pausiert():
-    """True, solange 'Fotos aus' oder 'Messenger + Fotos aus' aktiv ist -
-    unterdrueckt dann sowohl das Sofortfoto (sofortfoto_start()) als auch die
-    Fotos waehrend warte_waehrend_offen(). Die Messenger-Stummschaltung selbst
-    ist unabhaengig davon (eigene Datei, von send_pushover.sh/send_telegram.sh
+    """True, solange 'Fotos aus' oder 'Messenger + Fotos aus' aktiv ist, ODER
+    solange im Platte-Speichermodus der verschluesselte Bilder-Container noch
+    nicht bereit ist (siehe foto_speicher_nicht_bereit()) - unterdrueckt dann
+    sowohl das Sofortfoto (sofortfoto_start()) als auch die Fotos waehrend
+    warte_waehrend_offen(). Die Messenger-Stummschaltung selbst ist
+    unabhaengig davon (eigene Datei, von send_pushover.sh/send_telegram.sh
     geprueft)."""
+    if foto_speicher_nicht_bereit():
+        return True
     try:
         with open(FOTOS_PAUSE_PATH) as f:
             bis = json.load(f).get("bis", 0)
