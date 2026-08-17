@@ -155,6 +155,55 @@ function bestaetigen(text) {
   });
 }
 
+function passwortAbfragen(titel) {
+  // Wie bestaetigen() oben, aber mit maskiertem Passwortfeld - fuer
+  // Neustart/Herunterfahren/Dienste-Neustart, die extra das aktuelle
+  // Zugangs-Passwort verlangen (ein gestohlener Session-Cookie allein
+  // darf diese Aktionen nicht ausloesen koennen).
+  return new Promise((resolve) => {
+    const back = document.createElement('div');
+    back.className = 'confirm-back';
+
+    const box = document.createElement('div');
+    box.className = 'confirm-box';
+
+    const p = document.createElement('p');
+    p.textContent = titel;
+
+    const feld = document.createElement('input');
+    feld.type = 'password';
+    feld.className = 'notiz-textfeld';
+    feld.placeholder = 'Aktuelles Passwort';
+    feld.autocomplete = 'current-password';
+
+    const aktionen = document.createElement('div');
+    aktionen.className = 'confirm-aktionen';
+
+    const abbrechenBtn = document.createElement('button');
+    abbrechenBtn.className = 'btn btn-ghost';
+    abbrechenBtn.textContent = 'Abbrechen';
+
+    const okBtn = document.createElement('button');
+    okBtn.className = 'btn btn-danger';
+    okBtn.textContent = 'OK';
+
+    aktionen.append(abbrechenBtn, okBtn);
+    box.append(p, feld, aktionen);
+    back.appendChild(box);
+    document.body.appendChild(back);
+    feld.focus();
+
+    const schliessen = (ergebnis) => {
+      back.remove();
+      resolve(ergebnis);
+    };
+    abbrechenBtn.addEventListener('click', () => schliessen(null));
+    okBtn.addEventListener('click', () => schliessen(feld.value));
+    feld.addEventListener('keydown', (e) => { if (e.key === 'Enter') schliessen(feld.value); });
+    back.addEventListener('click', (e) => { if (e.target === back) schliessen(null); });
+  });
+}
+
 function notizEingeben(titel, startwert) {
   // Wie bestaetigen() oben, aber mit einem Textfeld statt nur Ja/Nein -
   // fuer die Archiv-Notizen ("Diebstahl, 4€ fehlte" o.ae.).
@@ -1347,23 +1396,35 @@ function ramVerlustHinweis() {
 
 async function neustart() {
   if (!await bestaetigen('Pi wirklich neu starten?' + ramVerlustHinweis())) return;
-  const res = await fetch('/api/system/neustart', { method: 'POST' });
+  const passwort = await passwortAbfragen('Zum Bestätigen aktuelles Passwort eingeben:');
+  if (passwort === null) return;
+  const res = await fetch('/api/system/neustart', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passwort }),
+  });
   if (res.ok) toast('Pi startet neu…');
   else meldeSystemFehler(res, 'Fehler beim Neustart');
 }
 
 async function herunterfahren() {
   if (!await bestaetigen('Pi wirklich herunterfahren? Danach muss der Strom manuell getrennt und wieder verbunden werden, um ihn erneut zu starten.' + ramVerlustHinweis())) return;
-  const res = await fetch('/api/system/herunterfahren', { method: 'POST' });
+  const passwort = await passwortAbfragen('Zum Bestätigen aktuelles Passwort eingeben:');
+  if (passwort === null) return;
+  const res = await fetch('/api/system/herunterfahren', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passwort }),
+  });
   if (res.ok) toast('Pi fährt herunter…');
   else meldeSystemFehler(res, 'Fehler beim Herunterfahren');
 }
 
 async function diensteNeustart() {
   if (!await bestaetigen('Dienste (Türüberwachung + Galerie) jetzt neu starten? Kurze Unterbrechung möglich.')) return;
+  const passwort = await passwortAbfragen('Zum Bestätigen aktuelles Passwort eingeben:');
+  if (passwort === null) return;
   btnDiensteNeustart.disabled = true;
   try {
-    const res = await fetch('/api/system/dienste-neustart', { method: 'POST' });
+    const res = await fetch('/api/system/dienste-neustart', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passwort }),
+    });
     if (res.ok) {
       toast('Dienste starten neu – Seite lädt in Kürze neu…');
       setTimeout(() => location.reload(), 4000);

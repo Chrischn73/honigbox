@@ -1640,6 +1640,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._html(_seite_login("Falsches Passwort."))
         self._setze_zugang_cookie_und_redirect("/")
 
+    def _passwort_bestaetigt(self, body):
+        """Fuer sicherheitskritische Aktionen (Neustart/Herunterfahren/
+        Dienste-Neustart), die NICHT allein per gueltigem Session-Cookie
+        ausloesbar sein sollen - sonst koennte ein gestohlener Cookie das
+        Passwort-Reset-Zeitfenster oeffnen (siehe zugang_reset_moeglich()),
+        ohne dass dafuer echter physischer/SSH-Zugriff noetig war."""
+        if ZUGANG_DEAKTIVIERT or not zugang_eingerichtet():
+            return True
+        return pruefe_zugang_passwort(body.get("passwort", ""))
+
     def _post_zuruecksetzen(self):
         if not zugang_eingerichtet():
             return self._redirect("/einrichten")
@@ -2011,18 +2021,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "chats": chats})
 
         if path == "/api/system/neustart":
+            body = self._rjson()
+            if not self._passwort_bestaetigt(body):
+                return self._err(403, "Falsches Passwort.")
             ok, fehler = _system_aktion(["sudo", "-n", "/usr/bin/systemctl", "reboot"])
             if not ok:
                 return self._err(500, f"Neustart fehlgeschlagen: {fehler}")
             return self._json({"ok": True})
 
         if path == "/api/system/herunterfahren":
+            body = self._rjson()
+            if not self._passwort_bestaetigt(body):
+                return self._err(403, "Falsches Passwort.")
             ok, fehler = _system_aktion(["sudo", "-n", "/usr/bin/systemctl", "poweroff"])
             if not ok:
                 return self._err(500, f"Herunterfahren fehlgeschlagen: {fehler}")
             return self._json({"ok": True})
 
         if path == "/api/system/dienste-neustart":
+            body = self._rjson()
+            if not self._passwort_bestaetigt(body):
+                return self._err(403, "Falsches Passwort.")
             # honigbox.service zuerst synchron neu starten und Erfolg pruefen -
             # das killt nicht den gerade antwortenden Prozess.
             ok, fehler = _system_aktion(["sudo", "-n", "/usr/bin/systemctl", "restart", "honigbox.service"])

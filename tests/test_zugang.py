@@ -35,6 +35,20 @@ def _cookie_aus_antwort(headers):
     return roh.split(";", 1)[0] if roh else None
 
 
+def _json_post(base_url, path, body=None, cookie=None):
+    parsed = urlparse(base_url)
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
+    headers = {"Content-Type": "application/json"}
+    if cookie:
+        headers["Cookie"] = cookie
+    try:
+        conn.request("POST", path, body=json.dumps(body or {}).encode(), headers=headers)
+        resp = conn.getresponse()
+        return resp.status, json.loads(resp.read().decode())
+    finally:
+        conn.close()
+
+
 @pytest.fixture
 def zugang_server(server, monkeypatch):
     """Wie server, aber mit tatsaechlich AKTIVEM Zugangs-Gate (die
@@ -221,3 +235,60 @@ def test_reset_loescht_alle_fotos_und_invalidiert_cookies(zugang_server, tmp_pat
 
     status, _, _ = _request(base_url, "GET", "/api/status", cookie=neuer_cookie)
     assert status == 200
+
+
+def test_neustart_verlangt_aktuelles_passwort(zugang_server, monkeypatch):
+    """Ein gestohlener Session-Cookie allein darf keinen Neustart ausloesen
+    koennen - sonst liesse sich darueber das Reset-Zeitfenster erzwingen
+    (siehe zugang_reset_moeglich(), das an den Prozessstart gekoppelt ist)."""
+    base_url, mod = zugang_server
+    mod.setze_zugang_passwort("aktuellesPW1")
+    cookie = f"{mod.ZUGANG_COOKIE_NAME}={mod._zugang_cookie_sollwert()}"
+
+    aufrufe = []
+    monkeypatch.setattr(mod, "_system_aktion", lambda cmd: aufrufe.append(cmd) or (True, None))
+
+    status, _ = _json_post(base_url, "/api/system/neustart", {}, cookie=cookie)
+    assert status == 403
+    status, _ = _json_post(base_url, "/api/system/neustart", {"passwort": "falsch"}, cookie=cookie)
+    assert status == 403
+    assert not aufrufe
+
+    status, data = _json_post(base_url, "/api/system/neustart", {"passwort": "aktuellesPW1"}, cookie=cookie)
+    assert status == 200
+    assert data["ok"] is True
+    assert aufrufe == [["sudo", "-n", "/usr/bin/systemctl", "reboot"]]
+
+
+def test_herunterfahren_verlangt_aktuelles_passwort(zugang_server, monkeypatch):
+    base_url, mod = zugang_server
+    mod.setze_zugang_passwort("aktuellesPW1")
+    cookie = f"{mod.ZUGANG_COOKIE_NAME}={mod._zugang_cookie_sollwert()}"
+    monkeypatch.setattr(mod, "_system_aktion", lambda cmd: (True, None))
+
+    status, _ = _json_post(base_url, "/api/system/herunterfahren", {"passwort": "falsch"}, cookie=cookie)
+    assert status == 403
+
+    status, data = _json_post(base_url, "/api/system/herunterfahren", {"passwort": "aktuellesPW1"}, cookie=cookie)
+    assert status == 200
+    assert data["ok"] is True
+
+
+def test_dienste_neustart_verlangt_aktuelles_passwort(zugang_server, monkeypatch):
+    """Kernanforderung: dieser Endpunkt startet honigbox-galerie.service (den
+    Prozess selbst) neu - das wuerde _ZUGANG_PROZESS_START zuruecksetzen und
+    ohne Passwortschutz das Reset-Fenster oeffnen, obwohl kein echter
+    Geraete-Neustart stattfand."""
+    base_url, mod = zugang_server
+    mod.setze_zugang_passwort("aktuellesPW1")
+    cookie = f"{mod.ZUGANG_COOKIE_NAME}={mod._zugang_cookie_sollwert()}"
+    monkeypatch.setattr(mod, "_system_aktion", lambda cmd: (True, None))
+    monkeypatch.setattr(mod, "_verzoegerter_dienst_restart", lambda unit: None)
+
+    status, _ = _json_post(base_url, "/api/system/dienste-neustart", {"passwort": "falsch"}, cookie=cookie)
+    assert status == 403
+
+    status, data = _json_post(
+        base_url, "/api/system/dienste-neustart", {"passwort": "aktuellesPW1"}, cookie=cookie)
+    assert status == 200
+    assert data["ok"] is True
