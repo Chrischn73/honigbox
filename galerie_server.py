@@ -206,7 +206,11 @@ def _seite_login(fehler=None):
     if zugang_reset_moeglich():
         formular += ('<p class="muted zugang-hinweis">Passwort vergessen? '
                      '<a href="/zuruecksetzen">Jetzt zurücksetzen</a> '
-                     '(nur kurz nach einem Neustart möglich).</p>')
+                     '(löscht dabei ALLE Fotos).</p>')
+    else:
+        formular += ('<p class="muted zugang-hinweis">Passwort vergessen? Gerät neu starten - '
+                     'direkt danach erscheint hier für 10 Minuten ein Link zum Zurücksetzen '
+                     '(löscht dabei ALLE Fotos, aktuelle wie Archiv).</p>')
     return _zugang_seite("Bitte Passwort eingeben.", formular, fehler)
 
 
@@ -230,6 +234,7 @@ def _seite_archiv_schluessel(fehler=None):
     zustand = _archiv_schluessel_status()
     hinweise = []
     wartet = False
+    verarbeitung = False
     bundle = {}
 
     for name, label in _ARCHIV_CONTAINER_LABEL.items():
@@ -237,8 +242,20 @@ def _seite_archiv_schluessel(fehler=None):
         if status is None:
             continue
         if status == "locked":
-            wartet = True
-            hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe (oder auf Zeitüberschreitung).</p>")
+            eingabe_pfad = os.path.join(ARCHIV_RUN_DIR, f"{name}-eingabe")
+            if os.path.isfile(eingabe_pfad):
+                # Eingabe wurde schon abgeschickt, archiv_entschluesseln.sh
+                # hat sie aber noch nicht verarbeitet (Formatieren/Oeffnen
+                # dauert auf einer echten SD-Karte ein paar Sekunden) - NICHT
+                # nochmal das Formular zeigen, sonst wirkt der Klick wie
+                # wirkungslos.
+                verarbeitung = True
+                hinweise.append(f"<p>{html.escape(label)}: Anfrage wird verarbeitet - das kann auf der "
+                                 f"SD-Karte einige Sekunden dauern...</p>")
+            else:
+                wartet = True
+                hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe "
+                                 f"(oder auf Zeitüberschreitung, bis zu 2 Minuten).</p>")
         elif status == "fresh" and zustand[name]["schluessel"]:
             bundle[name] = zustand[name]["schluessel"]
             hinweise.append(f"<p>{html.escape(label)}: neuer Container angelegt.</p>")
@@ -255,16 +272,33 @@ def _seite_archiv_schluessel(fehler=None):
         formular += """
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="eingabe">
-          <textarea name="schluessel" rows="4" placeholder="Gesicherte Schlüssel-Datei hier einfügen" required></textarea>
+          <textarea name="schluessel" rows="4" placeholder="Gesicherten Schlüssel oder heruntergeladene Datei hier einfügen" required></textarea>
           <button type="submit" class="btn btn-primary">Wiederherstellen</button>
         </form>
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="verwerfen">
           <button type="submit" class="btn btn-danger">Nein, frisch anfangen (alter Bestand geht verloren)</button>
         </form>
-        <meta http-equiv="refresh" content="4">
         """
-    elif bundle:
+    if wartet or verarbeitung:
+        # Automatisch aktualisieren, SOLANGE der Nutzer das Eingabefeld (falls
+        # vorhanden) nicht gerade benutzt - sonst wuerde ein Reload mitten im
+        # Einfuegen/Tippen den Inhalt loeschen (genau das war der urspruengliche
+        # Bug: ein stures <meta refresh> hat das Feld nach wenigen Sekunden
+        # immer wieder geleert).
+        formular += """
+        <script>
+        (function(){
+          var feld = document.querySelector('textarea[name="schluessel"]');
+          var beruehrt = false;
+          if (feld) feld.addEventListener('input', function(){ beruehrt = true; });
+          setInterval(function(){
+            if (!beruehrt && document.activeElement !== feld) location.reload();
+          }, 4000);
+        })();
+        </script>
+        """
+    if bundle:
         bundle_b64 = base64.b64encode(json.dumps(bundle).encode()).decode()
         formular += f"""
         <p class="warnhinweis">Diesen Schlüssel jetzt auf einen externen PC sichern - danach ist
@@ -277,7 +311,7 @@ def _seite_archiv_schluessel(fehler=None):
           <button type="submit" class="btn btn-danger">Ich habe den Schlüssel gesichert</button>
         </form>
         """
-    else:
+    elif not (wartet or verarbeitung):
         formular += '<a class="btn btn-primary" href="/">Weiter zur HonigBox</a>'
 
     return _zugang_seite("Verschlüsselungs-Schlüssel für das Foto-Archiv", formular, fehler)
@@ -1827,19 +1861,29 @@ class Handler(BaseHTTPRequestHandler):
         zustand = _archiv_schluessel_status()
 
         if aktion == "eingabe":
+            roh = form.get("schluessel", "").strip()
             try:
-                bundle = json.loads(form.get("schluessel", ""))
+                bundle = json.loads(roh)
             except (json.JSONDecodeError, TypeError):
                 bundle = None
-            if not isinstance(bundle, dict):
+            gesperrt = [n for n in _ARCHIV_CONTAINER_LABEL if zustand[n]["status"] == "locked"]
+            if isinstance(bundle, dict):
+                for name in gesperrt:
+                    wert = bundle.get(name)
+                    if isinstance(wert, str) and wert:
+                        _archiv_eingabe_schreiben(name, wert)
+            elif roh and len(gesperrt) == 1:
+                # Nutzer hat vermutlich nur den einzelnen Schluessel eingefuegt
+                # statt der kompletten heruntergeladenen JSON-Datei - bei genau
+                # EINEM wartenden Container (Normalfall: RAM-Speichermodus,
+                # nur das Archiv) ist trotzdem eindeutig, wofuer er gilt.
+                _archiv_eingabe_schreiben(gesperrt[0], roh)
+            elif roh:
                 return self._html(_seite_archiv_schluessel(
-                    "Ungültiges Format - bitte die heruntergeladene Datei unverändert einfügen."))
-            for name in _ARCHIV_CONTAINER_LABEL:
-                if zustand[name]["status"] != "locked":
-                    continue
-                wert = bundle.get(name)
-                if isinstance(wert, str) and wert:
-                    _archiv_eingabe_schreiben(name, wert)
+                    "Es warten mehrere Container auf einen Schlüssel - bitte die komplette "
+                    "heruntergeladene Datei einfügen, nicht nur einen einzelnen Schlüssel."))
+            else:
+                return self._html(_seite_archiv_schluessel("Bitte einen Schlüssel eingeben."))
         elif aktion == "verwerfen":
             for name in _ARCHIV_CONTAINER_LABEL:
                 if zustand[name]["status"] == "locked":
