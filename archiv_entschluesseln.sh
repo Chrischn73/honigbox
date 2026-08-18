@@ -14,19 +14,20 @@
 # (siehe archiv_bereit() dort), nicht beim eigenen Prozessstart.
 #
 # Wartet auf einen vorhandenen, gueltigen Container OHNE Zeitlimit - man
-# koennte laenger suchen muessen, wo der Schluessel gesichert wurde, das
-# darf nicht dazu fuehren, dass der alte Bestand automatisch verworfen wird.
-# Aufgeben (frischer Container) passiert deshalb NUR noch durch eine
-# ausdrueckliche Nutzer-Entscheidung ("Nein, frisch anfangen" in der
-# Web-Oberflaeche) - nie von selbst durch Zeitablauf. cryptsetup-Fehler
-# (kaputter Container, Absturz, falscher eingegebener Schluessel) werden
-# trotzdem GLEICH behandelt: alten Container verwerfen, frischen Container
-# mit neuem Zufalls-Schluessel anlegen. Das Skript darf NIE mit einem Fehler
-# enden, bevor eine Status-Datei existiert - sonst bliebe der Dienst
-# dauerhaft "failed" und die Galerie haengt permanent im Schluessel-Gate,
-# ohne dass je wieder etwas passiert. Bewusst KEIN Named-Pipe/FIFO fuer die
-# Schluessel-Uebergabe (blockierendes open() ist eine bekannte Faustfalle,
-# siehe Boot-Sicherheits-Review) - stattdessen einfaches Datei-Polling.
+# koennte laenger suchen muessen, wo der Schluessel gesichert wurde. Ein
+# FALSCHER eingegebener Schluessel fuehrt NICHT zum Verwerfen: ein
+# fehlgeschlagener Entschluesselungsversuch aendert nichts am Container,
+# es gibt also beliebig viele weitere Versuche. Verworfen (frischer
+# Container) wird NUR durch die ausdrueckliche "Keine Wiederherstellung"-
+# Entscheidung in der Web-Oberflaeche, oder wenn der Container von Anfang
+# an ungueltig/kaputt ist bzw. beim Neuanlegen selbst ein cryptsetup/mkfs/
+# mount-Fehler auftritt (dort gibt es nichts Sinnvolles zu wiederholen).
+# Das Skript darf NIE mit einem Fehler enden, bevor eine Status-Datei
+# existiert - sonst bliebe der Dienst dauerhaft "failed" und die Galerie
+# haengt permanent im Schluessel-Gate, ohne dass je wieder etwas passiert.
+# Bewusst KEIN Named-Pipe/FIFO fuer die Schluessel-Uebergabe (blockierendes
+# open() ist eine bekannte Faustfalle, siehe Boot-Sicherheits-Review) -
+# stattdessen einfaches Datei-Polling.
 #
 # WICHTIGER HINWEIS FUER EIN BESTEHENDES "Platte"-Deployment: existieren in
 # BILDER_DIR/ARCHIV_DIR bereits Klartext-Fotos aus der Zeit VOR dieser
@@ -72,7 +73,7 @@ container_neu_anlegen() {
     # die Web-Oberflaeche faelschlich schon wieder "wartet auf Eingabe",
     # obwohl die Eingabe-Datei laengst gelesen und geloescht wurde.
     echo "verarbeitung" > "$status"
-    rm -f "$RUN_DIR/${name}-eingabe"
+    rm -f "$RUN_DIR/${name}-eingabe" "$RUN_DIR/${name}-letzter-versuch-falsch"
     cryptsetup close "$mapper" >/dev/null 2>&1 || true
     umount "$ziel" >/dev/null 2>&1 || true
     rm -f "$datei"
@@ -120,23 +121,28 @@ container_schliessen() {
     local name="$1" ziel="$2"
     umount "$ziel" >/dev/null 2>&1 || true
     cryptsetup close "honigbox-${name}" >/dev/null 2>&1 || true
-    rm -f "$RUN_DIR/${name}-status" "$RUN_DIR/${name}-key" "$RUN_DIR/${name}-eingabe"
+    rm -f "$RUN_DIR/${name}-status" "$RUN_DIR/${name}-key" "$RUN_DIR/${name}-eingabe" "$RUN_DIR/${name}-letzter-versuch-falsch"
 }
 
 # container_oeffnen_oder_neu NAME CONTAINER_DATEI ZIEL_VERZEICHNIS
 # Fuer den Boot-Fall: wartet bei einem vorhandenen, gueltigen Container OHNE
 # Zeitlimit auf eine Schluessel-Eingabe (Datei-Polling statt FIFO - bewusst
-# kein blockierendes open(), das ist eine bekannte Falle). Endet nur durch
-# eine gueltige Eingabe oder ein ausdrueckliches "NEU" (Nutzer waehlt "frisch
-# anfangen") - NIE von selbst durch Zeitablauf. NICHT fuer den interaktiven
-# Fall gedacht (siehe container_neu_anlegen oben).
+# kein blockierendes open(), das ist eine bekannte Falle). Ein FALSCHER
+# Schluessel fuehrt NICHT automatisch zum Verwerfen - ein fehlgeschlagener
+# Entschluesselungsversuch aendert nichts am Container, es ist also voellig
+# sicher, es einfach nochmal zu versuchen. Verworfen wird der Container NUR
+# durch die ausdrueckliche "NEU"-Entscheidung (Nutzer waehlt "Keine
+# Wiederherstellung" in der Web-Oberflaeche) oder wenn er von Anfang an
+# ungueltig/kaputt ist - NIE von selbst durch Zeitablauf oder einen einzelnen
+# falschen Versuch. NICHT fuer den interaktiven Fall gedacht (siehe
+# container_neu_anlegen oben).
 container_oeffnen_oder_neu() {
     local name="$1" datei="$2" ziel="$3"
     local eingabe="$RUN_DIR/${name}-eingabe" status="$RUN_DIR/${name}-status" key="$RUN_DIR/${name}-key"
+    local letzter_versuch_falsch="$RUN_DIR/${name}-letzter-versuch-falsch"
     local mapper="honigbox-${name}"
 
-    rm -f "$eingabe"
-    echo "locked" > "$status"
+    rm -f "$eingabe" "$letzter_versuch_falsch"
 
     if [ ! -f "$datei" ] || ! cryptsetup isLuks "$datei" >/dev/null 2>&1; then
         log "$name: kein gueltiger Container vorhanden - lege neu an."
@@ -144,36 +150,42 @@ container_oeffnen_oder_neu() {
         return
     fi
 
+    echo "locked" > "$status"
     log "$name: warte ohne Zeitlimit auf Schluessel-Eingabe unter $eingabe ..."
-    while [ ! -f "$eingabe" ]; do
-        sleep 1
-    done
 
-    local eingabe_wert
-    eingabe_wert="$(cat "$eingabe" 2>/dev/null || true)"
-    rm -f "$eingabe"
+    while true; do
+        while [ ! -f "$eingabe" ]; do
+            sleep 1
+        done
 
-    if [ "$eingabe_wert" = "NEU" ] || [ -z "$eingabe_wert" ]; then
-        log "$name: Nutzer hat 'frisch anfangen' gewaehlt (oder leere Eingabe)."
-        container_neu_anlegen "$name" "$datei" "$ziel"
-        return
-    fi
+        local eingabe_wert
+        eingabe_wert="$(cat "$eingabe" 2>/dev/null || true)"
+        rm -f "$eingabe" "$letzter_versuch_falsch"
 
-    echo "verarbeitung" > "$status"
-    mkdir -p "$ziel"
-    if printf '%s' "$eingabe_wert" | cryptsetup open --key-file=- "$datei" "$mapper" >/dev/null 2>&1 \
-        && mount "/dev/mapper/$mapper" "$ziel" >/dev/null 2>&1; then
-        chmod 777 "$ziel"
-        printf '%s' "$eingabe_wert" > "$key"
-        chown root:www-data "$key" 2>/dev/null || true
-        chmod 640 "$key" 2>/dev/null || true
-        echo "unlocked" > "$status"
-        log "$name: mit eingegebenem Schluessel wiederhergestellt."
-    else
-        log "$name: eingegebener Schluessel falsch oder Mount fehlgeschlagen - lege frischen Container an."
+        if [ "$eingabe_wert" = "NEU" ] || [ -z "$eingabe_wert" ]; then
+            log "$name: Nutzer hat 'frisch anfangen' gewaehlt (oder leere Eingabe)."
+            container_neu_anlegen "$name" "$datei" "$ziel"
+            return
+        fi
+
+        echo "verarbeitung" > "$status"
+        mkdir -p "$ziel"
+        if printf '%s' "$eingabe_wert" | cryptsetup open --key-file=- "$datei" "$mapper" >/dev/null 2>&1 \
+            && mount "/dev/mapper/$mapper" "$ziel" >/dev/null 2>&1; then
+            chmod 777 "$ziel"
+            printf '%s' "$eingabe_wert" > "$key"
+            chown root:www-data "$key" 2>/dev/null || true
+            chmod 640 "$key" 2>/dev/null || true
+            echo "unlocked" > "$status"
+            log "$name: mit eingegebenem Schluessel wiederhergestellt."
+            return
+        fi
+
+        log "$name: eingegebener Schluessel falsch oder Mount fehlgeschlagen - Container bleibt erhalten, warte auf einen erneuten Versuch."
         cryptsetup close "$mapper" >/dev/null 2>&1 || true
-        container_neu_anlegen "$name" "$datei" "$ziel"
-    fi
+        echo "1" > "$letzter_versuch_falsch"
+        echo "locked" > "$status"
+    done
 }
 
 # Wird dieses Skript per 'source' (aus speicher_umschalten.sh) eingebunden,

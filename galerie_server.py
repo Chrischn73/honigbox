@@ -243,7 +243,12 @@ def _seite_archiv_schluessel(fehler=None):
             continue
         if status == "locked":
             wartet = True
-            hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe.</p>")
+            versuch_falsch_pfad = os.path.join(ARCHIV_RUN_DIR, f"{name}-letzter-versuch-falsch")
+            if os.path.isfile(versuch_falsch_pfad):
+                hinweise.append(f"<p class=\"warnhinweis\">{html.escape(label)}: falscher Schlüssel - "
+                                 f"bitte erneut versuchen.</p>")
+            else:
+                hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe.</p>")
         elif status == "verarbeitung":
             verarbeitung = True
         elif status == "fresh" and zustand[name]["schluessel"]:
@@ -299,12 +304,19 @@ def _seite_archiv_schluessel(fehler=None):
         benötigen ihn, um nach einem Neustart oder Stromausfall auf die archivierten Fotos
         zugreifen zu können.</p>
         <p class="muted">Ist Ihnen das nicht wichtig, können Sie dies auch übergehen...</p>
-        <a class="btn btn-primary" download="honigbox-schluessel.json"
+        <a class="btn btn-primary" id="archiv-schluessel-download" download="honigbox-schluessel.json"
            href="data:application/json;base64,{bundle_b64}">Schlüssel herunterladen</a>
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="bestaetigt">
-          <button type="submit" class="btn btn-ghost">Weiter ohne Sicherung</button>
+          <button type="submit" id="archiv-schluessel-weiter" class="btn btn-ghost">Weiter ohne Sicherung</button>
         </form>
+        <script>
+        (function(){{
+          var link = document.getElementById('archiv-schluessel-download');
+          var btn = document.getElementById('archiv-schluessel-weiter');
+          if (link && btn) link.addEventListener('click', function(){{ btn.textContent = 'Weiter'; }});
+        }})();
+        </script>
         """
 
     return _zugang_seite("Foto Archiv", formular, fehler)
@@ -703,6 +715,19 @@ def _lese_datei_falls_vorhanden(pfad):
 # soll nur EINMALIG beim Erzeugen abrufbar sein, nicht dauerhaft ueber die
 # Laufzeit hinweg.
 ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK = 10 * 60
+
+# Erzeugt immer per 'openssl rand -hex 32' (siehe archiv_entschluesseln.sh) -
+# also IMMER genau 64 Zeichen, nur Kleinbuchstaben a-f/0-9. Damit lassen sich
+# Verschreiber beim Kopieren (fehlende/zusaetzliche Zeichen, Gross-/
+# Kleinschreibung) VOR dem Absenden erkennen, statt sie erst cryptsetup
+# probieren zu lassen und bei "falsch" automatisch den Bestand zu verwerfen -
+# ein simpler Copy-Paste-Fehler soll nicht denselben irreversiblen Effekt
+# haben wie eine bewusste "Nein, frisch anfangen"-Entscheidung.
+ARCHIV_SCHLUESSEL_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _ist_gueltiger_archiv_schluessel(wert):
+    return bool(ARCHIV_SCHLUESSEL_RE.match(wert))
 
 
 def _archiv_schluessel_status():
@@ -1874,15 +1899,28 @@ class Handler(BaseHTTPRequestHandler):
                 bundle = None
             gesperrt = [n for n in _ARCHIV_CONTAINER_LABEL if zustand[n]["status"] == "locked"]
             if isinstance(bundle, dict):
-                for name in gesperrt:
-                    wert = bundle.get(name)
-                    if isinstance(wert, str) and wert:
-                        _archiv_eingabe_schreiben(name, wert)
+                eintraege = {name: bundle.get(name) for name in gesperrt
+                             if isinstance(bundle.get(name), str) and bundle.get(name)}
+                if not eintraege:
+                    return self._html(_seite_archiv_schluessel(
+                        "Diese Datei enthält keinen passenden Schlüssel - bitte die "
+                        "heruntergeladene Datei unverändert einfügen."))
+                ungueltig = [n for n, w in eintraege.items() if not _ist_gueltiger_archiv_schluessel(w)]
+                if ungueltig:
+                    return self._html(_seite_archiv_schluessel(
+                        "Das sieht nicht nach einem gültigen Schlüssel aus - bitte die Datei "
+                        "unverändert einfügen, ohne zusätzliche Zeichen davor oder danach."))
+                for name, wert in eintraege.items():
+                    _archiv_eingabe_schreiben(name, wert)
             elif roh and len(gesperrt) == 1:
                 # Nutzer hat vermutlich nur den einzelnen Schluessel eingefuegt
                 # statt der kompletten heruntergeladenen JSON-Datei - bei genau
                 # EINEM wartenden Container (Normalfall: RAM-Speichermodus,
                 # nur das Archiv) ist trotzdem eindeutig, wofuer er gilt.
+                if not _ist_gueltiger_archiv_schluessel(roh):
+                    return self._html(_seite_archiv_schluessel(
+                        "Das sieht nicht nach einem gültigen Schlüssel aus - bitte nochmal "
+                        "genau kopieren, ohne zusätzliche Zeichen davor oder danach."))
                 _archiv_eingabe_schreiben(gesperrt[0], roh)
             elif roh:
                 return self._html(_seite_archiv_schluessel(
