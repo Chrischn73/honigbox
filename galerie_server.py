@@ -250,14 +250,11 @@ def _seite_archiv_schluessel(fehler=None):
                 # nochmal das Formular zeigen, sonst wirkt der Klick wie
                 # wirkungslos.
                 verarbeitung = True
-                hinweise.append(f"<p>{html.escape(label)}: Anfrage wird verarbeitet - das kann auf der "
-                                 f"SD-Karte einige Sekunden dauern...</p>")
             else:
                 wartet = True
                 hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe.</p>")
         elif status == "fresh" and zustand[name]["schluessel"]:
             bundle[name] = zustand[name]["schluessel"]
-            hinweise.append(f"<p>{html.escape(label)}: neuer Container angelegt.</p>")
         elif status == "unlocked":
             hinweise.append(f"<p>{html.escape(label)}: mit gesichertem Schlüssel wiederhergestellt.</p>")
         elif status == "fresh":
@@ -267,19 +264,20 @@ def _seite_archiv_schluessel(fehler=None):
 
     formular = "".join(hinweise)
 
+    if verarbeitung and not wartet:
+        formular += '<p>...bitte warten...</p>'
+
     if wartet:
         formular += """
-        <p class="muted">Es gibt kein Zeitlimit - lass dir Zeit, den Schlüssel zu suchen.
-        Ist dir der bisherige Archiv-Bestand nicht wichtig, kannst du unten direkt auf
-        "Nein, frisch anfangen" klicken, ohne einen Schlüssel einzugeben.</p>
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="eingabe">
-          <textarea name="schluessel" rows="4" placeholder="Gesicherten Schlüssel oder heruntergeladene Datei hier einfügen" required></textarea>
+          <textarea name="schluessel" rows="4" placeholder="Hier den ggf. vorhandenen Schlüssel für archivierte Fotos einfügen" required></textarea>
           <button type="submit" class="btn btn-primary">Wiederherstellen</button>
         </form>
+        <p class="muted zugang-hinweis">Kein Zeitlimit - lass dir Zeit.</p>
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="verwerfen">
-          <button type="submit" class="btn btn-danger">Nein, frisch anfangen (alter Bestand geht verloren)</button>
+          <button type="submit" class="btn btn-ghost">Keine Wiederherstellung - Archiv-Fotos werden gelöscht</button>
         </form>
         """
     if wartet or verarbeitung:
@@ -303,29 +301,22 @@ def _seite_archiv_schluessel(fehler=None):
     if bundle:
         bundle_b64 = base64.b64encode(json.dumps(bundle).encode()).decode()
         formular += f"""
-        <p class="muted">Dieser Schlüssel ist nur wichtig, wenn du das Foto-Archiv über einen
-        künftigen Neustart hinweg behalten willst. Ist dir das egal, kannst du diesen Schritt
-        einfach überspringen und unten direkt weiterklicken.</p>
-        <p class="warnhinweis">Falls doch: diesen Schlüssel JETZT auf einen externen PC sichern -
-        danach ist er hier nicht mehr abrufbar! Ohne ihn ist der jeweilige Bestand nach einem
-        künftigen Neustart ohne erneute Eingabe unwiderruflich weg.</p>
+        <p class="warnhinweis">Achtung: Die Fotos im Archiv werden verschlüsselt.</p>
+        <p class="muted">Diesen Schlüssel sollten Sie nun auf einem externen PC sichern. Sie
+        benötigen ihn, um nach einem Neustart oder Stromausfall auf die archivierten Fotos
+        zugreifen zu können.</p>
+        <p class="muted">Ist Ihnen das nicht wichtig, können Sie dies auch übergehen...</p>
         <a class="btn btn-primary" download="honigbox-schluessel.json"
            href="data:application/json;base64,{bundle_b64}">Schlüssel herunterladen</a>
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="bestaetigt">
-          <button type="submit" class="btn btn-ghost">Weiter ohne Schlüsselsicherung</button>
+          <button type="submit" class="btn btn-ghost">Weiter ohne Sicherung</button>
         </form>
         """
     elif not (wartet or verarbeitung):
         formular += '<a class="btn btn-primary" href="/">Weiter zur HonigBox</a>'
 
-    return _zugang_seite(
-        "Verschlüsselungs-Schlüssel für das Foto-Archiv - betrifft nur bewusst archivierte "
-        "Fotos, nicht die aktuellen Fotos, die Türüberwachung oder sonstige Einstellungen. "
-        "Wird nach einem Neustart oder Stromausfall gebraucht, um wieder auf die bisherigen "
-        "Archiv-Fotos zugreifen zu können - ohne ihn wird automatisch ein neues, leeres "
-        "Archiv angelegt.",
-        formular, fehler)
+    return _zugang_seite("Foto Archiv", formular, fehler)
 
 
 def _migriere_alte_einstellungsdatei(alter_pfad, neuer_pfad):
