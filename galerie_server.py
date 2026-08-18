@@ -319,7 +319,8 @@ def _seite_archiv_schluessel(fehler=None):
         </script>
         """
 
-    return _zugang_seite("Foto Archiv", formular, fehler)
+    titel = "Neues verschlüsseltes Foto-Archiv wird erstellt" if (verarbeitung and not wartet) else "Foto Archiv"
+    return _zugang_seite(titel, formular, fehler)
 
 
 def _migriere_alte_einstellungsdatei(alter_pfad, neuer_pfad):
