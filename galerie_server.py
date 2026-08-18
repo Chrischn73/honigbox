@@ -242,17 +242,10 @@ def _seite_archiv_schluessel(fehler=None):
         if status is None:
             continue
         if status == "locked":
-            eingabe_pfad = os.path.join(ARCHIV_RUN_DIR, f"{name}-eingabe")
-            if os.path.isfile(eingabe_pfad):
-                # Eingabe wurde schon abgeschickt, archiv_entschluesseln.sh
-                # hat sie aber noch nicht verarbeitet (Formatieren/Oeffnen
-                # dauert auf einer echten SD-Karte ein paar Sekunden) - NICHT
-                # nochmal das Formular zeigen, sonst wirkt der Klick wie
-                # wirkungslos.
-                verarbeitung = True
-            else:
-                wartet = True
-                hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe.</p>")
+            wartet = True
+            hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe.</p>")
+        elif status == "verarbeitung":
+            verarbeitung = True
         elif status == "fresh" and zustand[name]["schluessel"]:
             bundle[name] = zustand[name]["schluessel"]
         elif status == "unlocked":
@@ -274,11 +267,11 @@ def _seite_archiv_schluessel(fehler=None):
           <textarea name="schluessel" rows="4" placeholder="Hier den ggf. vorhandenen Schlüssel für archivierte Fotos einfügen" required></textarea>
           <button type="submit" class="btn btn-primary">Wiederherstellen</button>
         </form>
-        <p class="muted zugang-hinweis">Kein Zeitlimit - lass dir Zeit.</p>
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="verwerfen">
-          <button type="submit" class="btn btn-ghost">Keine Wiederherstellung - Archiv-Fotos werden gelöscht</button>
+          <button type="submit" class="btn btn-dunkel">Keine Wiederherstellung</button>
         </form>
+        <p class="muted zugang-hinweis">Alte vorhandene Archiv-Fotos werden gelöscht.</p>
         """
     if wartet or verarbeitung:
         # Automatisch aktualisieren, SOLANGE der Nutzer das Eingabefeld (falls
@@ -313,8 +306,6 @@ def _seite_archiv_schluessel(fehler=None):
           <button type="submit" class="btn btn-ghost">Weiter ohne Sicherung</button>
         </form>
         """
-    elif not (wartet or verarbeitung):
-        formular += '<a class="btn btn-primary" href="/">Weiter zur HonigBox</a>'
 
     return _zugang_seite("Foto Archiv", formular, fehler)
 
@@ -742,10 +733,23 @@ def _archiv_schluessel_erforderlich():
     """True, wenn die Web-Oberflaeche auf /archiv-schluessel umleiten muss,
     weil fuer mindestens einen Container noch eine Nutzer-Entscheidung
     ausstehend ist (Schluessel eingeben/verwerfen, oder einen frisch
-    erzeugten Schluessel bestaetigen). Ohne Phase C (keine Status-Dateien
-    vorhanden) bleibt das immer False."""
+    erzeugten Schluessel bestaetigen) oder gerade verarbeitet wird. Ohne
+    Phase C (keine Status-Dateien vorhanden) bleibt das immer False."""
     for eintrag in _archiv_schluessel_status().values():
-        if eintrag["status"] == "locked":
+        if eintrag["status"] in ("locked", "verarbeitung"):
+            return True
+        if eintrag["status"] == "fresh" and eintrag["schluessel"]:
+            return True
+    return False
+
+
+def _archiv_schluessel_seite_notwendig():
+    """Etwas weiter gefasst als _archiv_schluessel_erforderlich(): entscheidet,
+    ob GET /archiv-schluessel ueberhaupt etwas anzuzeigen hat, oder ob direkt
+    auf '/' weitergeleitet werden kann - eine "alles erledigt"-Seite mit
+    nur einem "Weiter"-Knopf waere sinnlos."""
+    for eintrag in _archiv_schluessel_status().values():
+        if eintrag["status"] in ("locked", "verarbeitung", "fehler"):
             return True
         if eintrag["status"] == "fresh" and eintrag["schluessel"]:
             return True
@@ -1953,6 +1957,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._redirect("/login")
 
         if p == "/archiv-schluessel":
+            if not _archiv_schluessel_seite_notwendig():
+                return self._redirect("/")
             return self._html(_seite_archiv_schluessel())
 
         if p.startswith("/api/"):

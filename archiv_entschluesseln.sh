@@ -67,6 +67,11 @@ container_neu_anlegen() {
     local status="$RUN_DIR/${name}-status" key="$RUN_DIR/${name}-key"
     local mapper="honigbox-${name}"
 
+    # Sofort als "wird verarbeitet" markieren, BEVOR die eigentliche (auf
+    # einer SD-Karte durchaus mehrsekuendige) Arbeit beginnt - sonst zeigt
+    # die Web-Oberflaeche faelschlich schon wieder "wartet auf Eingabe",
+    # obwohl die Eingabe-Datei laengst gelesen und geloescht wurde.
+    echo "verarbeitung" > "$status"
     rm -f "$RUN_DIR/${name}-eingabe"
     cryptsetup close "$mapper" >/dev/null 2>&1 || true
     umount "$ziel" >/dev/null 2>&1 || true
@@ -154,6 +159,7 @@ container_oeffnen_oder_neu() {
         return
     fi
 
+    echo "verarbeitung" > "$status"
     mkdir -p "$ziel"
     if printf '%s' "$eingabe_wert" | cryptsetup open --key-file=- "$datei" "$mapper" >/dev/null 2>&1 \
         && mount "/dev/mapper/$mapper" "$ziel" >/dev/null 2>&1; then
