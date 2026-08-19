@@ -1056,6 +1056,21 @@ def lade_pushover_einstellungen():
         werte = json.loads(json.dumps(PUSHOVER_STANDARD))  # tiefe Kopie
         werte["token"] = token
         werte["user"] = user
+        if token or user:
+            # Altbestand mit bereits konfigurierten Zugangsdaten: die alte
+            # pushover.conf kannte keinen An/Aus-Schalter, hat also schon
+            # immer gesendet - das bleibt beim Umstieg erhalten (aktiv=True),
+            # damit Benachrichtigungen nicht unbemerkt verstummen. WICHTIG:
+            # sofort dauerhaft speichern (Einstellungsdatei + Shell-Konfig),
+            # sonst zeigt die Web-Oberflaeche hier faelschlich "aus" (der
+            # PUSHOVER_STANDARD-Default), waehrend send_pushover.sh mangels
+            # eigener .pushover-einstellungen.sh weiterhin ueber den alten
+            # Fallback aktiv sendet - Anzeige und tatsaechliches Verhalten
+            # widersprechen sich sonst, bis einmal per Hand gespeichert wird.
+            werte["aktiv"] = True
+            with open(PUSHOVER_EINSTELLUNGEN_PATH, "w") as f:
+                json.dump(werte, f)
+            _schreibe_pushover_shell_conf(werte)
         return werte
     werte = _lade_einstellungen_datei(PUSHOVER_EINSTELLUNGEN_PATH, PUSHOVER_STANDARD)
     meldungen = dict(PUSHOVER_STANDARD["meldungen"])
