@@ -138,19 +138,33 @@ def zugang_cookie_gueltig(cookie_header):
     return hmac.compare_digest(morsel.value, sollwert)
 
 
-# Passwort vergessen? Ein Reset ist bewusst nur kurz nach einem (Dienst- oder
-# Geraete-)Neustart moeglich - das ist die einzige Huerde gegen jemanden mit
+# Passwort vergessen? Ein Reset ist bewusst nur kurz nach einem ECHTEN
+# Geraete-Neustart moeglich - das ist die einzige Huerde gegen jemanden mit
 # einem gestohlenen Session-Cookie: ohne das aktuelle Passwort kann er den
-# Server nicht per Web-UI neu starten (siehe geplante Neustart-Absicherung),
-# braucht also physischen oder SSH-Zugriff, um dieses Zeitfenster ueberhaupt
-# erst zu oeffnen. _ZUGANG_PROZESS_START wird beim Modul-Import gesetzt, also
-# bei jedem Dienststart (und damit auch bei jedem Geraete-Neustart) neu.
+# Server nicht per Web-UI neu starten (siehe _passwort_bestaetigt()), braucht
+# also physischen oder SSH-Zugriff, um dieses Zeitfenster ueberhaupt erst zu
+# oeffnen. Bewusst NICHT am Prozessstart des Python-Skripts festgemacht,
+# sondern an der echten Kernel-Boot-Zeit (/proc/uptime): honigbox-galerie.
+# service hat Restart=on-failure - stuerzt der Prozess ab (Bug, OOM, ...) und
+# wird von systemd automatisch neu gestartet, darf sich das Reset-Fenster
+# NICHT erneut oeffnen, obwohl gar kein Geraete-Neustart stattgefunden hat.
 ZUGANG_RESET_FENSTER_SEKUNDEN = 10 * 60
 _ZUGANG_PROZESS_START = time.time()
 
 
+def _sekunden_seit_geraete_start():
+    """Faellt auf die Prozess-Laufzeit zurueck, falls /proc/uptime nicht
+    lesbar ist (z.B. Tests, Nicht-Linux) - dort ist ein Dienst-Neustart ohne
+    Geraete-Neustart sowieso nicht simulierbar."""
+    try:
+        with open("/proc/uptime") as f:
+            return float(f.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return time.time() - _ZUGANG_PROZESS_START
+
+
 def zugang_reset_moeglich():
-    return zugang_eingerichtet() and (time.time() - _ZUGANG_PROZESS_START) < ZUGANG_RESET_FENSTER_SEKUNDEN
+    return zugang_eingerichtet() and _sekunden_seit_geraete_start() < ZUGANG_RESET_FENSTER_SEKUNDEN
 
 
 _ZUGANG_SEITE_TEMPLATE = """<!DOCTYPE html>
@@ -688,6 +702,16 @@ ARCHIV_RUN_DIR = os.environ.get("GALERIE_ARCHIV_RUN_DIR", "/run/honigbox")
 ARCHIV_SCHLUESSEL_PATH = os.path.join(ARCHIV_RUN_DIR, "archiv-key")
 BILDER_SCHLUESSEL_PATH = os.path.join(ARCHIV_RUN_DIR, "bilder-key")
 BILDER_STATUS_PATH = os.environ.get("GALERIE_BILDER_STATUS", "/run/honigbox/bilder-status")
+# Von install.sh EINMALIG beim Einrichten angelegt (liegt auf der SD-Karte,
+# nie in /run) - unterscheidet "Phase C ist auf diesem System aktiv, der
+# Entschluesselungs-Dienst ist beim Booten nur noch nicht fertig" von
+# "Phase C ist hier gar nicht installiert" (Test/Altinstallation). Ohne
+# diese Unterscheidung koennte ein sehr kurzes Boot-Fenster (bevor
+# archiv_entschluesseln.sh ueberhaupt seine erste Status-Datei geschrieben
+# hat - die beiden Dienste sind bewusst nicht gegeneinander geordnet, siehe
+# honigbox-archiv-entschluesseln.service) faelschlich als "bereit" gelten,
+# obwohl der Mount noch gar nicht steht.
+ARCHIV_VERSCHLUESSELUNG_MARKER = os.path.join(EINSTELLUNGEN_DIR, ".archiv-verschluesselung-aktiv")
 
 
 def archiv_bereit():
@@ -700,6 +724,8 @@ def archiv_bereit():
         with open(ARCHIV_STATUS_PATH) as f:
             status = f.read().strip()
     except OSError:
+        if os.path.isfile(ARCHIV_VERSCHLUESSELUNG_MARKER):
+            return False  # Phase C ist aktiv, Dienst ist beim Booten nur noch nicht fertig
         os.makedirs(ARCHIV_DIR, exist_ok=True)
         return True
     return status in ("unlocked", "fresh")

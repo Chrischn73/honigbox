@@ -38,6 +38,27 @@ def test_archiv_bereit_ohne_status_datei_ist_abwaertskompatibel(server):
     assert mod.archiv_bereit() is True
 
 
+def test_archiv_bereit_mit_marker_aber_ohne_status_datei_ist_boot_wettlauf_sicher(archiv_dateien, monkeypatch):
+    """Regressionstest fuer einen beim Code-Review vom 2026-08-19 gefundenen
+    Boot-Wettlauf: honigbox-archiv-entschluesseln.service und
+    honigbox-galerie.service sind bewusst nicht gegeneinander geordnet -
+    bevor Ersterer ueberhaupt seine erste Status-Datei geschrieben hat,
+    durfte archiv_bereit() NICHT einfach "bereit" annehmen, wenn Phase C
+    tatsaechlich aktiv ist (erkennbar am von install.sh einmalig gesetzten
+    Marker) - sonst koennte in diesem kurzen Fenster unverschluesselt
+    geschrieben werden, bevor der reale LUKS-Mount es ueberdeckt."""
+    base_url, mod, run_dir = archiv_dateien
+    marker = run_dir / "archiv-verschluesselung-aktiv"
+    monkeypatch.setattr(mod, "ARCHIV_VERSCHLUESSELUNG_MARKER", str(marker))
+
+    assert not os.path.isfile(mod.ARCHIV_STATUS_PATH)
+    marker.write_text("")
+    assert mod.archiv_bereit() is False
+
+    os.remove(marker)
+    assert mod.archiv_bereit() is True
+
+
 @pytest.mark.parametrize("status,erwartet", [
     ("unlocked", True), ("fresh", True), ("locked", False), ("fehler", False),
 ])

@@ -55,6 +55,13 @@ def zugang_server(server, monkeypatch):
     galerie_env-Fixture deaktiviert es sonst global, siehe conftest.py)."""
     base_url, mod = server
     monkeypatch.setattr(mod, "ZUGANG_DEAKTIVIERT", False)
+    # zugang_reset_moeglich() fragt die ECHTE Kernel-Boot-Zeit ab (siehe
+    # _sekunden_seit_geraete_start(), Fix fuer Restart=on-failure) - auf der
+    # Test-/Entwicklungsmaschine laeuft der Kernel typischerweise schon
+    # laenger als das 10-Minuten-Fenster, ohne diesen Mock wuerden also ALLE
+    # Tests, die ein offenes Fenster erwarten, von der Laufzeit der
+    # Test-Maschine abhaengen statt von einem definierten Zustand.
+    monkeypatch.setattr(mod, "_sekunden_seit_geraete_start", lambda: 0.0)
     return base_url, mod
 
 
@@ -170,7 +177,7 @@ def test_setze_zugang_passwort_lehnt_zu_kurzes_passwort_ab(galerie_env):
         mod.setze_zugang_passwort("ab")
 
 
-def test_reset_nur_kurz_nach_neustart_moeglich(zugang_server):
+def test_reset_nur_kurz_nach_neustart_moeglich(zugang_server, monkeypatch):
     """Kernanforderung: der Reset-Link darf nicht dauerhaft erreichbar sein -
     sonst waere ein gestohlener Session-Cookie nutzlos, aber der physische
     Neustart-Schutz waere es dann auch (jeder koennte jederzeit resetten)."""
@@ -185,8 +192,9 @@ def test_reset_nur_kurz_nach_neustart_moeglich(zugang_server):
     assert status == 200
     assert b"ALLE gespeicherten Fotos" in body
 
-    # Fenster (per Prozessstart-Zeitpunkt) als abgelaufen simulieren.
-    mod._ZUGANG_PROZESS_START -= mod.ZUGANG_RESET_FENSTER_SEKUNDEN + 1
+    # Fenster (per echter Boot-Zeit, nicht Prozessstart - siehe
+    # _sekunden_seit_geraete_start()) als abgelaufen simulieren.
+    monkeypatch.setattr(mod, "_sekunden_seit_geraete_start", lambda: mod.ZUGANG_RESET_FENSTER_SEKUNDEN + 1)
     assert mod.zugang_reset_moeglich() is False
 
     status, _, body = _request(base_url, "GET", "/login")
@@ -240,7 +248,8 @@ def test_reset_loescht_alle_fotos_und_invalidiert_cookies(zugang_server, tmp_pat
 def test_neustart_verlangt_aktuelles_passwort(zugang_server, monkeypatch):
     """Ein gestohlener Session-Cookie allein darf keinen Neustart ausloesen
     koennen - sonst liesse sich darueber das Reset-Zeitfenster erzwingen
-    (siehe zugang_reset_moeglich(), das an den Prozessstart gekoppelt ist)."""
+    (siehe zugang_reset_moeglich(), das an die echte Boot-Zeit gekoppelt
+    ist, nicht mehr an den Prozessstart)."""
     base_url, mod = zugang_server
     mod.setze_zugang_passwort("aktuellesPW1")
     cookie = f"{mod.ZUGANG_COOKIE_NAME}={mod._zugang_cookie_sollwert()}"

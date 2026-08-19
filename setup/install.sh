@@ -266,6 +266,13 @@ log "Archiv-Verschluesselung einrichten (Phase C)"
 cp "$SETUP_DIR/honigbox-archiv-entschluesseln.service" /etc/systemd/system/honigbox-archiv-entschluesseln.service
 cp "$SETUP_DIR/honigbox-archiv-tmpfiles.conf" /etc/tmpfiles.d/honigbox-archiv.conf
 systemd-tmpfiles --create /etc/tmpfiles.d/honigbox-archiv.conf
+# Einmalig hier (nicht bei jedem Boot) angelegt, auf der SD-Karte, nie in
+# /run - damit archiv_bereit() in galerie_server.py "Phase C ist aktiv, der
+# Entschluesselungs-Dienst ist beim Booten nur noch nicht fertig" von
+# "Phase C ist hier gar nicht installiert" unterscheiden kann, ohne auf ein
+# sehr kurzes Boot-Wettlauf-Fenster angewiesen zu sein.
+mkdir -p /opt/honigbox/einstellungen
+touch /opt/honigbox/einstellungen/.archiv-verschluesselung-aktiv
 
 # ---------------------------------------------------------------------------
 log "Berechtigungen fuer den Galerie-Dienst (www-data)"
