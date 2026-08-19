@@ -234,7 +234,7 @@ def _seite_archiv_schluessel(fehler=None):
     zustand = _archiv_schluessel_status()
     hinweise = []
     wartet = False
-    verarbeitung = False
+    verarbeitung_namen = []
     bundle = {}
 
     for name, label in _ARCHIV_CONTAINER_LABEL.items():
@@ -250,7 +250,7 @@ def _seite_archiv_schluessel(fehler=None):
             else:
                 hinweise.append(f"<p>{html.escape(label)}: wartet auf Schlüssel-Eingabe.</p>")
         elif status == "verarbeitung":
-            verarbeitung = True
+            verarbeitung_namen.append(name)
         elif status == "fresh" and zustand[name]["schluessel"]:
             bundle[name] = zustand[name]["schluessel"]
         elif status == "unlocked":
@@ -262,7 +262,7 @@ def _seite_archiv_schluessel(fehler=None):
 
     formular = "".join(hinweise)
 
-    if verarbeitung and not wartet:
+    if verarbeitung_namen and not wartet:
         formular += '<p>...bitte warten...</p>'
 
     if wartet:
@@ -278,7 +278,7 @@ def _seite_archiv_schluessel(fehler=None):
         </form>
         <p class="muted zugang-hinweis">Alte vorhandene Archiv-Fotos werden gelöscht.</p>
         """
-    if wartet or verarbeitung:
+    if wartet or verarbeitung_namen:
         # Automatisch aktualisieren, SOLANGE der Nutzer das Eingabefeld (falls
         # vorhanden) nicht gerade benutzt - sonst wuerde ein Reload mitten im
         # Einfuegen/Tippen den Inhalt loeschen (genau das war der urspruengliche
@@ -319,7 +319,11 @@ def _seite_archiv_schluessel(fehler=None):
         </script>
         """
 
-    titel = "Neues verschlüsseltes Foto-Archiv wird erstellt" if (verarbeitung and not wartet) else "Foto Archiv"
+    if verarbeitung_namen and not wartet:
+        labels = [_ARCHIV_CONTAINER_LABEL[name] for name in verarbeitung_namen]
+        titel = f"Neues verschlüsseltes {' / '.join(labels)} wird erstellt"
+    else:
+        titel = "Foto Archiv"
     return _zugang_seite(titel, formular, fehler)
 
 
@@ -536,7 +540,7 @@ _migriere_alte_einstellungsdatei(
 PUSHOVER_SHELL_CONF_PATH = os.environ.get(
     "GALERIE_PUSHOVER_SHELL_CONF", os.path.join(EINSTELLUNGEN_DIR, ".pushover-einstellungen.sh")
 )
-ALTE_PUSHOVER_CONF_PATH = os.path.join(BASE, "pushover.conf")
+ALTE_PUSHOVER_CONF_PATH = os.environ.get("GALERIE_ALTE_PUSHOVER_CONF", os.path.join(BASE, "pushover.conf"))
 
 # Telegram ist ein zweiter, unabhaengiger Benachrichtigungskanal neben
 # Pushover (beide gleichzeitig aktivierbar) - nutzt bewusst DIESELBEN
@@ -698,6 +702,27 @@ def archiv_bereit():
     except OSError:
         os.makedirs(ARCHIV_DIR, exist_ok=True)
         return True
+    return status in ("unlocked", "fresh")
+
+
+def bilder_bereit():
+    """Aequivalent zu archiv_bereit(), aber fuer BILDER_DIR - nur im
+    "platte"-Speichermodus relevant (siehe archiv_entschluesseln.sh); im
+    RAM-Disk-Modus ist BILDER_DIR ein tmpfs, das systemd bereits vor
+    honigbox-galerie.service per RequiresMountsFor sicherstellt, kein
+    weiteres Gate noetig. Spiegelt bewusst honigbox.sh's
+    foto_speicher_nicht_bereit() (dieselbe Pruefung fuer die automatische
+    Tueroeffnungs-Aufnahme) - anders als archiv_bereit() gilt hier bei
+    fehlender Status-Datei im Platte-Modus NICHT bereit statt bereit: dieser
+    Pfad wird viel haeufiger (jede Tueroeffnung) automatisch beschrieben,
+    verdient also den vorsichtigeren Default."""
+    if lade_speicher_einstellungen().get("speicherort") != "platte":
+        return True
+    try:
+        with open(BILDER_STATUS_PATH) as f:
+            status = f.read().strip()
+    except OSError:
+        return False
     return status in ("unlocked", "fresh")
 
 
@@ -2393,6 +2418,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "dauer_sekunden": dauer})
 
         if path == "/api/foto/einzel":
+            if not bilder_bereit():
+                return self._err(503, "Speicher ist gerade nicht verfügbar (Verschlüsselung noch nicht entsperrt).")
             testmodus_aktiv = foto_testmodus_rest_sekunden() > 0
             befehl = [FOTO_SCRIPT, FOTO_TESTMODUS_METADATA_PATH] if testmodus_aktiv else [FOTO_SCRIPT]
             try:

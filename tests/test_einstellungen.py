@@ -141,7 +141,7 @@ def test_pushover_aktiv_standard_aus_bei_erster_installation(server):
     assert data["werte"]["aktiv"] is True, "Schalter wurde nicht dauerhaft gespeichert"
 
     with open(mod.PUSHOVER_SHELL_CONF_PATH) as f:
-        assert "PUSHOVER_AKTIV='0'" in f.read()
+        assert "PUSHOVER_AKTIV='1'" in f.read()
 
 
 def test_pushover_eskalation_texte_nennen_vier_und_34_minuten(server):

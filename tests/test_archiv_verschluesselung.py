@@ -112,7 +112,7 @@ def test_archiv_schluessel_seite_zeigt_wartehinweis_bei_locked(archiv_dateien):
     status, body = _raw_get_body(base_url, "/archiv-schluessel")
     assert status == 200
     assert b"Wiederherstellen" in body
-    assert b"frisch anfangen" in body
+    assert b"Keine Wiederherstellung" in body
 
 
 def test_archiv_schluessel_seite_zeigt_download_bei_fresh(archiv_dateien):

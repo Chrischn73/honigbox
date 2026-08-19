@@ -41,6 +41,9 @@ set -uo pipefail   # bewusst OHNE 'set -e': jeder Schritt wird einzeln
                    # geprueft und behandelt, ein automatischer Skript-Abbruch
                    # waere hier genau das Risiko, das vermieden werden soll.
 
+# HONIGBOX_RUN_DIR wird von keiner Unit-Datei gesetzt - reiner Test-Hook,
+# um dieses Skript ausserhalb von /run/honigbox (dort ohne root nicht
+# beschreibbar) manuell mit Stub-Binaries durchzuspielen.
 RUN_DIR="${HONIGBOX_RUN_DIR:-/run/honigbox}"
 FOTOS_DIR="/opt/honigbox/fotos"
 SPEICHER_EINSTELLUNGEN_DATEI="/opt/honigbox/einstellungen/.speicher-einstellungen.json"

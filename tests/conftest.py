@@ -36,6 +36,12 @@ def galerie_env(tmp_path, monkeypatch):
     monkeypatch.setenv("GALERIE_STATIC", str(os.path.join(REPO_ROOT, "static")))
     monkeypatch.setenv("GALERIE_USER", "")
     monkeypatch.setenv("GALERIE_PASSWORT", "")
+    # Ohne das wuerde lade_pushover_einstellungen() bei jedem Test die ECHTE
+    # pushover.conf im Projekt-Root einlesen (falls dort eine mit echten
+    # Zugangsdaten liegt) und je nach ihrem Inhalt unterschiedlich migrieren -
+    # ein Test-Isolation-Leck, das erst durch den 2026-08-19 gefundenen
+    # Migrations-Fix (siehe test_pushover_migration.py) sichtbar wurde.
+    monkeypatch.setenv("GALERIE_ALTE_PUSHOVER_CONF", str(tmp_path / "nie-vorhandene-pushover.conf"))
     # Das In-App-Zugangs-Passwort-Gate ist fuer die allermeisten Tests hier
     # irrelevant und wuerde sonst JEDE Anfrage auf /einrichten umleiten (in
     # den isolierten Test-Verzeichnissen ist ja nie ein Zugang gesetzt) -

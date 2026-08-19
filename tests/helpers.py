@@ -7,8 +7,11 @@ import urllib.request
 
 
 def get(base_url, path):
-    with urllib.request.urlopen(base_url + path, timeout=5) as resp:
-        return resp.status, json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(base_url + path, timeout=5) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode())
 
 
 def post(base_url, path, body=None):
