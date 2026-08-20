@@ -397,8 +397,17 @@ KAMERA_FELDER = [
     {"key": "aufnahme_verzoegerung_ms", "typ": "zahl",
      "label": "Aufnahme-Verzögerung in ms (niedriger = schneller, aber Belichtung/Weißabgleich weniger eingeschwungen)",
      "min": 200, "max": 3000, "step": 100},
-    {"key": "breite", "typ": "zahl", "label": "Breite (Pixel)", "min": 320, "max": 4608, "step": 1},
-    {"key": "hoehe", "typ": "zahl", "label": "Höhe (Pixel)", "min": 240, "max": 2592, "step": 1},
+    {"key": "aufloesung", "typ": "select", "label": "Fotogröße", "optionen": [
+        ["1536x864", "Klein (1536×864, ca. 1,3 MP) - schnell, wenig Speicherplatz"],
+        ["2304x1296", "Mittel (2304×1296, ca. 3 MP) - bisheriger Standard"],
+        ["3456x1944", "Groß (3456×1944, ca. 6,7 MP)"],
+        ["4608x2592", "Maximal (4608×2592, ca. 12 MP) - volle Sensorauflösung"]]},
+    # Weiterhin die tatsaechlich an foto.sh durchgereichten Werte (siehe
+    # _schreibe_kamera_shell_conf) - "versteckt", weil "aufloesung" oben die
+    # Nutzer-Oberflaeche dafuer ist; speichere_kamera_einstellungen() leitet
+    # beide aus der gewaehlten Fotogroesse ab, bevor hier validiert wird.
+    {"key": "breite", "typ": "zahl", "label": "Breite (Pixel)", "min": 320, "max": 4608, "step": 1, "versteckt": True},
+    {"key": "hoehe", "typ": "zahl", "label": "Höhe (Pixel)", "min": 240, "max": 2592, "step": 1, "versteckt": True},
     {"key": "jpeg_qualitaet", "typ": "zahl", "label": "JPEG-Qualität", "min": 1, "max": 100, "step": 1},
     {"key": "rotation", "typ": "select", "label": "Rotation", "optionen": [["0", "0°"], ["180", "180°"]]},
     {"key": "horizontal_spiegeln", "typ": "checkbox", "label": "Horizontal spiegeln"},
@@ -407,12 +416,13 @@ KAMERA_FELDER = [
 ]
 
 KAMERA_STANDARD = {
-    "metering": "centre", "ev": 0, "belichtungsmodus": "sport", "verschlusszeit": 0, "gain": 0,
+    "metering": "spot", "ev": 0, "belichtungsmodus": "normal", "verschlusszeit": 0, "gain": 0,
     "helligkeit": 0, "kontrast": 1, "saettigung": 1, "schaerfe": 1, "weissabgleich": "auto",
-    "rauschunterdrueckung": "cdn_fast", "fokus_modus": "fest", "fokus_position": 4.0,
+    "rauschunterdrueckung": "cdn_fast", "fokus_modus": "auto", "fokus_position": 4.0,
     "aufnahme_verzoegerung_ms": 1000,
+    "aufloesung": "2304x1296",
     "breite": 2304, "hoehe": 1296, "jpeg_qualitaet": 90,
-    "rotation": "0", "horizontal_spiegeln": False, "vertikal_spiegeln": False, "zoom": 1.0,
+    "rotation": "0", "horizontal_spiegeln": False, "vertikal_spiegeln": False, "zoom": 1.5,
 }
 
 FOTO_ZEITPLAN_PATH = os.environ.get(
@@ -503,10 +513,10 @@ FOTO_ZEITPLAN_FELDER = [
      "step": 1, "gruppe": GRUPPE_DUNKLE_FOTOS},
 ]
 FOTO_ZEITPLAN_STANDARD = {
-    "phase1_dauer_sekunden": 60, "phase1_intervall_sekunden": 3,
-    "phase2_dauer_sekunden": 60, "phase2_intervall_sekunden": 8,
-    "intervall_danach_sekunden": 15, "max_anzahl": 30,
-    "aufbewahrungstage": 30, "aufbewahrungsstunden": 0, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 28,
+    "phase1_dauer_sekunden": 20, "phase1_intervall_sekunden": 3,
+    "phase2_dauer_sekunden": 20, "phase2_intervall_sekunden": 6,
+    "intervall_danach_sekunden": 15, "max_anzahl": 20,
+    "aufbewahrungstage": 0, "aufbewahrungsstunden": 12, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 28,
 }
 
 
@@ -977,7 +987,13 @@ def _sh_quote(wert):
 
 
 def lade_kamera_einstellungen():
-    return _lade_einstellungen_datei(KAMERA_EINSTELLUNGEN_PATH, KAMERA_STANDARD)
+    werte = _lade_einstellungen_datei(KAMERA_EINSTELLUNGEN_PATH, KAMERA_STANDARD)
+    # "aufloesung" ist keine eigene gespeicherte Einstellung, sondern nur die
+    # Nutzer-Oberflaeche fuer breite/hoehe (siehe KAMERA_FELDER) - hier aus
+    # den tatsaechlich gespeicherten Werten neu zusammengesetzt, damit die
+    # Weboberflaeche die passende Fotogroesse vorauswaehlen kann.
+    werte["aufloesung"] = f"{int(werte['breite'])}x{int(werte['hoehe'])}"
+    return werte
 
 
 def _schreibe_kamera_shell_conf(werte):
@@ -1043,8 +1059,17 @@ def einzelfoto_helligkeit_pruefen():
 
 
 def speichere_kamera_einstellungen(rohdaten):
+    rohdaten = dict(rohdaten)
+    aufloesung = str(rohdaten.get("aufloesung", ""))
+    breite_str, _, hoehe_str = aufloesung.partition("x")
+    try:
+        rohdaten["breite"] = int(breite_str)
+        rohdaten["hoehe"] = int(hoehe_str)
+    except ValueError:
+        pass  # kein gueltiges "BxH" - _validiere_feld_wert() faellt unten auf breite/hoehe-Defaults zurueck
     bereinigt = _speichere_feld_einstellungen(KAMERA_EINSTELLUNGEN_PATH, KAMERA_FELDER, KAMERA_STANDARD, rohdaten)
     _schreibe_kamera_shell_conf(bereinigt)
+    bereinigt["aufloesung"] = f"{bereinigt['breite']}x{bereinigt['hoehe']}"
     return bereinigt
 
 

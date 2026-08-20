@@ -62,7 +62,7 @@ def test_foto_einzel_im_testmodus_liefert_metadata_und_konfiguration(server, mon
     assert status == 200
     assert data["testmodus"] is True
     assert data["metadata"] == {"ExposureTime": 12345, "Lux": 87.5}
-    assert data["kamera_werte"]["belichtungsmodus"] == "sport"
+    assert data["kamera_werte"]["belichtungsmodus"] == "normal"
     assert any(f["key"] == "belichtungsmodus" for f in data["kamera_felder"])
     assert not os.path.exists(mod.FOTO_TESTMODUS_METADATA_PATH), "Temporaere Metadata-Datei muss aufgeraeumt werden"
 

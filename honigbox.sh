@@ -58,10 +58,10 @@ FOTO_ZEITPLAN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".foto-zeitplan.json")
 # Feldnamen muessen mit FOTO_ZEITPLAN_STANDARD in galerie_server.py identisch
 # sein (dort auch die Migration vom fruaheren zwei-stufigen Schema).
 FOTO_ZEITPLAN_STANDARD = {
-    "phase1_dauer_sekunden": 60, "phase1_intervall_sekunden": 3,
-    "phase2_dauer_sekunden": 60, "phase2_intervall_sekunden": 8,
-    "intervall_danach_sekunden": 15, "max_anzahl": 30,
-    "aufbewahrungstage": 30, "aufbewahrungsstunden": 0, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 28,
+    "phase1_dauer_sekunden": 20, "phase1_intervall_sekunden": 3,
+    "phase2_dauer_sekunden": 20, "phase2_intervall_sekunden": 6,
+    "intervall_danach_sekunden": 15, "max_anzahl": 20,
+    "aufbewahrungstage": 0, "aufbewahrungsstunden": 12, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 28,
 }
 
 STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".status.json")

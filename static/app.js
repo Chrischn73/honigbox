@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.30';
+const APP_VERSION = 'v1.3.31';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -832,6 +832,7 @@ function renderFelderIn(container, felder, werte, idPrefix) {
   container.innerHTML = '';
   let letzteGruppe = null;
   felder.forEach((feld) => {
+    if (feld.versteckt) return;  // z.B. breite/hoehe - werden ueber "aufloesung" gesetzt
     if (feld.gruppe && feld.gruppe !== letzteGruppe) {
       letzteGruppe = feld.gruppe;
       const ueberschrift = document.createElement('div');
@@ -880,6 +881,7 @@ function renderFelderIn(container, felder, werte, idPrefix) {
 function sammleFelderAus(felder, idPrefix) {
   const werte = {};
   felder.forEach((feld) => {
+    if (feld.versteckt) return;  // nicht gerendert, gibt es im DOM gar nicht
     const input = document.getElementById(`${idPrefix}-${feld.key}`);
     if (feld.typ === 'checkbox') werte[feld.key] = input.checked;
     else if (feld.typ === 'zahl') werte[feld.key] = parseFloat(input.value);
@@ -1566,7 +1568,7 @@ function zeigeFotoTestErgebnis(daten) {
     fotoTestErgebnisEl.appendChild(hinweis);
   }
 
-  const felder = daten.kamera_felder || [];
+  const felder = (daten.kamera_felder || []).filter((feld) => !feld.versteckt);
   const ueberschrift2 = document.createElement('p');
   ueberschrift2.innerHTML = '<strong>Konfigurierte Einstellungen</strong>';
   fotoTestErgebnisEl.appendChild(ueberschrift2);

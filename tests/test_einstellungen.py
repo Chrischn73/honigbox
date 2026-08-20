@@ -10,7 +10,7 @@ def test_kamera_einstellungen_rundtrip(server):
     base_url, mod = server
     status, data = get(base_url, "/api/kamera")
     assert status == 200
-    assert data["werte"]["belichtungsmodus"] == "sport"  # seit 2026-08-08 Standard
+    assert data["werte"]["belichtungsmodus"] == "normal"  # seit 2026-08-20 Standard (vorher "sport")
 
     status, data = post(base_url, "/api/kamera", {"belichtungsmodus": "normal", "metering": "centre"})
     assert status == 200
@@ -20,6 +20,44 @@ def test_kamera_einstellungen_rundtrip(server):
     assert data["werte"]["belichtungsmodus"] == "normal", "Einstellung wurde nicht dauerhaft gespeichert"
 
 
+def test_kamera_aufloesung_standard_und_leitet_breite_hoehe_ab(server):
+    """Regressionstest: 'aufloesung' (Fotogröße-Dropdown) ist die
+    Nutzer-Oberflaeche fuer breite/hoehe, die seit 2026-08-20 nicht mehr als
+    eigene Felder in der Weboberflaeche stehen (siehe KAMERA_FELDER,
+    "versteckt")."""
+    base_url, mod = server
+    status, data = get(base_url, "/api/kamera")
+    assert status == 200
+    assert data["werte"]["aufloesung"] == "2304x1296"
+    assert data["werte"]["breite"] == 2304
+    assert data["werte"]["hoehe"] == 1296
+
+    status, data = post(base_url, "/api/kamera", {"aufloesung": "4608x2592"})
+    assert status == 200
+    assert data["werte"]["aufloesung"] == "4608x2592"
+    assert data["werte"]["breite"] == 4608
+    assert data["werte"]["hoehe"] == 2592
+
+    status, data = get(base_url, "/api/kamera")
+    assert data["werte"]["breite"] == 4608, "Aufloesung wurde nicht dauerhaft gespeichert"
+
+    with open(mod.KAMERA_SHELL_CONF_PATH) as f:
+        shell_konfig = f.read()
+    assert "BREITE='4608'" in shell_konfig
+    assert "HOEHE='2592'" in shell_konfig
+
+
+def test_kamera_felder_markieren_breite_hoehe_als_versteckt(server):
+    """breite/hoehe muessen fuer die Persistenz weiter Teil von KAMERA_FELDER
+    sein (siehe _speichere_feld_einstellungen), sollen aber nicht mehr als
+    eigene Formularfelder gerendert werden - das steuert das Frontend ueber
+    dieses Flag."""
+    _, mod = server
+    versteckt = {f["key"] for f in mod.KAMERA_FELDER if f.get("versteckt")}
+    assert versteckt == {"breite", "hoehe"}
+    assert any(f["key"] == "aufloesung" for f in mod.KAMERA_FELDER)
+
+
 def test_foto_zeitplan_aufbewahrungsstunden_standard_und_rundtrip(server):
     """Regressionstest: seit 2026-08-14 kann die Loesch-Frist auch in
     zusaetzlichen Stunden angegeben werden (z.B. '3 Stunden' bei Tage=0, oder
@@ -27,7 +65,7 @@ def test_foto_zeitplan_aufbewahrungsstunden_standard_und_rundtrip(server):
     base_url, _ = server
     status, data = get(base_url, "/api/foto-zeitplan")
     assert status == 200
-    assert data["werte"]["aufbewahrungsstunden"] == 0
+    assert data["werte"]["aufbewahrungsstunden"] == 12  # seit 2026-08-20 Standard (vorher 0)
 
     status, data = post(base_url, "/api/foto-zeitplan", {"aufbewahrungstage": 3, "aufbewahrungsstunden": 12})
     assert status == 200
@@ -82,9 +120,9 @@ def test_foto_zeitplan_phase2_felder_haben_standardwerte(server):
     status, data = get(base_url, "/api/foto-zeitplan")
     assert status == 200
     assert data["werte"]["phase1_intervall_sekunden"] == 3
-    assert data["werte"]["phase1_dauer_sekunden"] == 60
-    assert data["werte"]["phase2_intervall_sekunden"] == 8
-    assert data["werte"]["phase2_dauer_sekunden"] == 60
+    assert data["werte"]["phase1_dauer_sekunden"] == 20
+    assert data["werte"]["phase2_intervall_sekunden"] == 6
+    assert data["werte"]["phase2_dauer_sekunden"] == 20
     assert data["werte"]["intervall_danach_sekunden"] == 15
 
 
