@@ -186,6 +186,13 @@ body{
 .btn-dunkel-akzent{border-color:var(--honey)}
 .btn-sm{min-height:38px; padding:.4rem .7rem; font-size:.9rem}
 
+.archiv-schluessel-feld{margin:.8rem 0}
+.archiv-schluessel-feld label{display:block; font-weight:600; font-size:.85rem; margin-bottom:.35rem}
+.archiv-schluessel-kopierzeile{display:flex; flex-direction:column; gap:.5rem}
+.archiv-schluessel-text{width:100%; box-sizing:border-box; font-family:monospace; font-size:.8rem;
+  padding:.55rem .6rem; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink)}
+.archiv-schluessel-kopieren{width:100%}
+
 .card-list{list-style:none; margin:0; padding:0; user-select:none;
   display:grid; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:.6rem}
 .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);

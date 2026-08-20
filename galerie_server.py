@@ -312,14 +312,26 @@ def _seite_archiv_schluessel(fehler=None):
         """
     if bundle:
         bundle_b64 = base64.b64encode(json.dumps(bundle).encode()).decode()
+        schluessel_felder = "".join(f"""
+        <div class="archiv-schluessel-feld">
+          <label>{html.escape(_ARCHIV_CONTAINER_LABEL.get(name, name))}</label>
+          <div class="archiv-schluessel-kopierzeile">
+            <input type="text" readonly value="{html.escape(schluessel)}" class="archiv-schluessel-text"
+                   onclick="this.select()">
+            <button type="button" class="btn btn-sm archiv-schluessel-kopieren"
+                    data-schluessel="{html.escape(schluessel)}">🔑 Kopieren</button>
+          </div>
+        </div>
+        """ for name, schluessel in bundle.items())
         formular += f"""
         <p class="warnhinweis">Achtung: Die Fotos im Archiv werden verschlüsselt.</p>
-        <p class="muted">Diesen Schlüssel sollten Sie nun auf einem externen PC sichern. Sie
+        <p class="muted">Diesen Schlüssel sollten Sie nun sichern, z. B. in einem Passwortmanager. Sie
         benötigen ihn, um nach einem Neustart oder Stromausfall auf die archivierten Fotos
         zugreifen zu können.</p>
         <p class="muted">Ist Ihnen das nicht wichtig, können Sie dies auch übergehen...</p>
+        {schluessel_felder}
         <a class="btn btn-primary" id="archiv-schluessel-download" download="honigbox-schluessel.json"
-           href="data:application/json;base64,{bundle_b64}">Schlüssel herunterladen</a>
+           href="data:application/json;base64,{bundle_b64}">Schlüssel als Datei herunterladen</a>
         <form method="POST" action="/archiv-schluessel" class="zugang-form">
           <input type="hidden" name="aktion" value="bestaetigt">
           <button type="submit" id="archiv-schluessel-weiter" class="btn btn-ghost">Weiter ohne Sicherung</button>
@@ -328,7 +340,26 @@ def _seite_archiv_schluessel(fehler=None):
         (function(){{
           var link = document.getElementById('archiv-schluessel-download');
           var btn = document.getElementById('archiv-schluessel-weiter');
-          if (link && btn) link.addEventListener('click', function(){{ btn.textContent = 'Weiter'; }});
+          function gesichert() {{ if (btn) btn.textContent = 'Weiter'; }}
+          if (link) link.addEventListener('click', gesichert);
+          document.querySelectorAll('.archiv-schluessel-kopieren').forEach(function(kopierBtn) {{
+            kopierBtn.addEventListener('click', function() {{
+              var wert = kopierBtn.getAttribute('data-schluessel');
+              var feld = kopierBtn.previousElementSibling;
+              var erfolg = false;
+              try {{
+                feld.removeAttribute('readonly');
+                feld.select();
+                feld.setSelectionRange(0, wert.length);
+                erfolg = document.execCommand('copy');
+                feld.setAttribute('readonly', 'readonly');
+              }} catch (e) {{ erfolg = false; }}
+              var textVorher = kopierBtn.textContent;
+              kopierBtn.textContent = erfolg ? '✓ Kopiert!' : 'Kopieren fehlgeschlagen';
+              setTimeout(function() {{ kopierBtn.textContent = textVorher; }}, 2000);
+              if (erfolg) gesichert();
+            }});
+          }});
         }})();
         </script>
         """
