@@ -408,7 +408,15 @@ bash /opt/honigbox/speicher_umschalten.sh || \
 # ---------------------------------------------------------------------------
 log "systemd-Dienste aktivieren"
 systemctl daemon-reload
-systemctl enable --now honigbox-archiv-entschluesseln.service
+# Bewusst NUR "enable", NICHT "--now": faellt am Ende dieses Skripts wegen
+# eines Hostname-Wechsels ein Neustart an (siehe unten), soll der allererste
+# echte Lauf von honigbox-archiv-entschluesseln.service erst BEI DIESEM
+# Neustart passieren - sonst wuerde er hier waehrend der Installation schon
+# einen frischen Container+Schluessel anlegen, den niemand je sieht (der
+# Nutzer schaut auf das Terminal, nicht auf die Weboberflaeche), und direkt
+# nach dem Neustart faelschlich nach genau diesem nie gesicherten Schluessel
+# fragen. Ohne bevorstehenden Neustart wird weiter unten explizit gestartet.
+systemctl enable honigbox-archiv-entschluesseln.service
 systemctl enable --now honigbox.service
 systemctl restart honigbox.service
 systemctl enable --now honigbox-galerie.service
@@ -539,6 +547,14 @@ EOF
     else
         echo
         echo "Hostname war bereits angepasst - kein Neustart erforderlich. Fertig."
+        # Kein Neustart in Sicht - Archiv-Verschluesselung jetzt direkt
+        # starten (siehe Begruendung beim "enable" weiter oben). "start"
+        # statt "restart": laeuft der Dienst (z.B. nach einem frueheren
+        # install.sh-Lauf) schon, soll ein erneuter Lauf hier NICHT
+        # angestossen werden - das wuerde ein bereits entschluesseltes
+        # Archiv grundlos wieder in den Warte-auf-Schluessel-Zustand
+        # zuruecksetzen.
+        systemctl start honigbox-archiv-entschluesseln.service
     fi
 else
     if [ -n "$IP_ANZEIGE" ]; then
@@ -552,4 +568,5 @@ else
     echo " HonigBox:          $HONIGBOX_URL"
     echo "======================================================================"
     echo " Fertig - kein Neustart erforderlich."
+    systemctl start honigbox-archiv-entschluesseln.service
 fi
