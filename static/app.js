@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.32';
+const APP_VERSION = 'v1.3.33';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -34,6 +34,7 @@ const btnArchivierenBatch = document.getElementById('btn-archivieren-batch');
 const btnLoeschenBatch = document.getElementById('btn-loeschen-batch');
 const btnAuswahlAufheben = document.getElementById('btn-auswahl-aufheben');
 const btnFotoAufnehmen = document.getElementById('btn-foto-aufnehmen');
+const btnAktualisieren = document.getElementById('btn-aktualisieren');
 const btnFotoTestmodus = document.getElementById('btn-foto-testmodus');
 const fotoTestErgebnisEl = document.getElementById('foto-test-ergebnis');
 const kameraFelderContainer = document.getElementById('kamera-felder');
@@ -789,8 +790,21 @@ async function laden() {
     const data = await res.json();
     archivNotizen = data.notizen || {};
     render(data.bilder || []);
+    return true;
   } catch {
     toast('Fotos konnten nicht geladen werden');
+    return false;
+  }
+}
+
+async function aktualisieren() {
+  btnAktualisieren.disabled = true;
+  try {
+    if (await laden()) {
+      toast('Aktualisiert');
+    }
+  } finally {
+    btnAktualisieren.disabled = false;
   }
 }
 
@@ -1953,6 +1967,7 @@ btnAuswahlAufheben.addEventListener('click', () => {
 btnArchivierenBatch.addEventListener('click', batchArchivieren);
 btnLoeschenBatch.addEventListener('click', batchLoeschen);
 btnFotoAufnehmen.addEventListener('click', fotoAufnehmen);
+btnAktualisieren.addEventListener('click', aktualisieren);
 btnFotoTestmodus.addEventListener('click', fotoTestmodusUmschalten);
 kameraSpeichernBtn.addEventListener('click', speichereKameraEinstellungen);
 kameraZuruecksetzenBtn.addEventListener('click', kameraZuruecksetzen);
