@@ -56,7 +56,7 @@ for f in honigbox.sh foto.sh send_pushover.sh send_telegram.sh galerie_server.py
         exit 1
     fi
 done
-for f in honigbox-backup.sh honigbox-backup-rotate.py honigbox-backup.service honigbox-backup.timer \
+for f in honigbox-backup.sh honigbox-backup-rotate.py honigbox-backup-fingerprint.py honigbox-backup.service honigbox-backup.timer \
          honigbox-update-check.service honigbox-update-check.timer \
          honigbox-archiv-entschluesseln.service honigbox-archiv-tmpfiles.conf; do
     if [ ! -e "$SETUP_DIR/$f" ]; then
@@ -254,6 +254,7 @@ log "Backup & Update-Check einrichten"
 mkdir -p /opt/backup-scripts /opt/backup
 cp "$SETUP_DIR/honigbox-backup.sh" /opt/backup-scripts/honigbox-backup.sh
 cp "$SETUP_DIR/honigbox-backup-rotate.py" /opt/backup-scripts/honigbox-backup-rotate.py
+cp "$SETUP_DIR/honigbox-backup-fingerprint.py" /opt/backup-scripts/honigbox-backup-fingerprint.py
 chmod +x /opt/backup-scripts/honigbox-backup.sh
 
 cp "$SETUP_DIR/honigbox-backup.service" /etc/systemd/system/honigbox-backup.service

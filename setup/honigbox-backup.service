@@ -4,4 +4,4 @@ After=honigbox.service
 
 [Service]
 Type=oneshot
-ExecStart=/opt/backup-scripts/honigbox-backup.sh
+ExecStart=/opt/backup-scripts/honigbox-backup.sh --nur-bei-aenderung
