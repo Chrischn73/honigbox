@@ -263,6 +263,22 @@ cp "$SETUP_DIR/honigbox-update-check.service" /etc/systemd/system/honigbox-updat
 cp "$SETUP_DIR/honigbox-update-check.timer" /etc/systemd/system/honigbox-update-check.timer
 
 # ---------------------------------------------------------------------------
+log "Systemprotokoll (journald) nur im RAM halten - schont die SD-Karte"
+# Eigene Drop-in-Datei statt journald.conf selbst zu aendern - Rueckbau durch
+# einfaches Loeschen dieser Datei + Neustart von systemd-journald. Preis:
+# nach einem Stromausfall/Absturz sind die Logs weg (wichtige Ereignisse
+# meldet die HonigBox ohnehin per Pushover/Telegram). Vorhandene Logs in
+# /var/log/journal bleiben liegen, werden aber nicht mehr fortgeschrieben.
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/honigbox-ram.conf << 'JOURNALDEOF'
+# Angelegt von HonigBox setup/install.sh - Logs nur im RAM (/run/log/journal).
+[Journal]
+Storage=volatile
+RuntimeMaxUse=50M
+JOURNALDEOF
+systemctl restart systemd-journald || true
+
+# ---------------------------------------------------------------------------
 log "Archiv-Verschluesselung einrichten (Phase C)"
 cp "$SETUP_DIR/honigbox-archiv-entschluesseln.service" /etc/systemd/system/honigbox-archiv-entschluesseln.service
 cp "$SETUP_DIR/honigbox-archiv-tmpfiles.conf" /etc/tmpfiles.d/honigbox-archiv.conf

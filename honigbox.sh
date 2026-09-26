@@ -64,7 +64,16 @@ FOTO_ZEITPLAN_STANDARD = {
     "aufbewahrungstage": 0, "aufbewahrungsstunden": 12, "dunkle_fotos_loeschen": True, "helligkeitsschwelle": 28,
 }
 
-STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".status.json")
+# Live-Status (Tuer offen/zu + "aktualisiert"-Heartbeat) wird jede Sekunde neu
+# geschrieben und liegt deshalb im RAM (/run/honigbox ist tmpfs, angelegt per
+# honigbox-archiv-tmpfiles.conf) - bis v1.3.35 lag er als .status.json in
+# EINSTELLUNGEN_DIR und hat die SD-Karte im Sekundentakt beschrieben. Nur der
+# Zeitpunkt der letzten Oeffnung muss einen Neustart ueberleben: eigene Datei
+# auf der SD-Karte, geschrieben NUR bei einer echten Oeffnung. Pfade muessen
+# identisch mit STATUS_PATH/LETZTE_OEFFNUNG_PATH in galerie_server.py sein.
+STATUS_PATH = "/run/honigbox/tuer-status.json"
+LETZTE_OEFFNUNG_PATH = os.path.join(EINSTELLUNGEN_DIR, ".letzte-oeffnung.json")
+ALTER_STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".status.json")  # bis v1.3.35, wird migriert
 TUER_SIMULATION_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-simulation-bis.json")
 TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-signal")
 # Pfad muss identisch mit TUER_EINSTELLUNGEN_PATH in galerie_server.py sein
@@ -132,26 +141,50 @@ def schreibe_status(offen, offen_seit, letzte_oeffnung):
     letzte_oeffnung ist dagegen ein dauerhafter Zeitstempel (bleibt auch nach
     dem Schliessen/einem Neustart erhalten), fuer die "letzte Tueroeffnung"-
     Anzeige."""
+    _json_atomar_schreiben(STATUS_PATH, {
+        "tuer_offen": offen, "aktualisiert": time.time(),
+        "offen_seit": offen_seit, "letzte_oeffnung": letzte_oeffnung,
+    })
+
+
+def _json_atomar_schreiben(pfad, daten):
+    """Ueber eine temporaere Datei + os.replace, damit die Galerie nie eine
+    halb geschriebene Datei liest."""
     try:
-        with open(STATUS_PATH, "w") as f:
-            json.dump({
-                "tuer_offen": offen, "aktualisiert": time.time(),
-                "offen_seit": offen_seit, "letzte_oeffnung": letzte_oeffnung,
-            }, f)
+        os.makedirs(os.path.dirname(pfad), exist_ok=True)
+        tmp = pfad + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(daten, f)
+        os.replace(tmp, pfad)
     except OSError:
         pass
 
 
-def _lade_letzte_oeffnung():
-    """Beim Skriptstart (z.B. nach einem Pi-Neustart) den zuletzt bekannten
-    Zeitstempel aus der Status-Datei uebernehmen, statt bei jedem Neustart der
-    Tuerueberwachung wieder bei None anzufangen."""
+def _lies_letzte_oeffnung(pfad):
     try:
-        with open(STATUS_PATH) as f:
+        with open(pfad) as f:
             wert = json.load(f).get("letzte_oeffnung")
         return float(wert) if wert else None
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
         return None
+
+
+def _lade_letzte_oeffnung():
+    """Beim Skriptstart (z.B. nach einem Pi-Neustart) den zuletzt bekannten
+    Zeitstempel uebernehmen, statt bei jedem Neustart der Tuerueberwachung
+    wieder bei None anzufangen. Migriert einmalig aus der alten .status.json
+    (bis v1.3.35) und loescht diese danach - sie wird nicht mehr geschrieben."""
+    wert = _lies_letzte_oeffnung(LETZTE_OEFFNUNG_PATH)
+    if os.path.isfile(ALTER_STATUS_PATH):
+        if wert is None:
+            wert = _lies_letzte_oeffnung(ALTER_STATUS_PATH)
+            if wert is not None:
+                _json_atomar_schreiben(LETZTE_OEFFNUNG_PATH, {"letzte_oeffnung": wert})
+        try:
+            os.remove(ALTER_STATUS_PATH)
+        except OSError:
+            pass
+    return wert
 
 
 def simulation_aktiv():
@@ -203,6 +236,7 @@ def door_is_open():
         if _tuer_offen_seit is None:
             _tuer_offen_seit = time.time()
             _letzte_oeffnung = _tuer_offen_seit
+            _json_atomar_schreiben(LETZTE_OEFFNUNG_PATH, {"letzte_oeffnung": _letzte_oeffnung})
     else:
         _tuer_offen_seit = None
     schreibe_status(offen, _tuer_offen_seit, _letzte_oeffnung)

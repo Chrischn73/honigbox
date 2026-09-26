@@ -619,7 +619,11 @@ TELEGRAM_CODE_GUELTIG_SEK = 600  # 10 Minuten Zeitfenster fuer den Verbinden-Lin
 # Signaldateien fuer die Verstaendigung mit honigbox.sh (siehe dort) - deren
 # Pfade muessen dort identisch definiert sein. Kein Migrations-Bedarf (rein
 # ephemer, ein fehlender/veralteter Stand beim Umzug ist harmlos).
-STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".status.json")
+# Live-Status liegt im RAM (tmpfs), weil honigbox.sh ihn jede Sekunde neu
+# schreibt; die letzte Oeffnung zusaetzlich dauerhaft auf der SD-Karte (nur bei
+# echter Oeffnung geschrieben) - siehe STATUS_PATH in honigbox.sh.
+STATUS_PATH = os.environ.get("GALERIE_TUER_STATUS", "/run/honigbox/tuer-status.json")
+LETZTE_OEFFNUNG_PATH = os.path.join(EINSTELLUNGEN_DIR, ".letzte-oeffnung.json")
 TUER_SIMULATION_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-simulation-bis.json")
 TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-signal")
 # Von honigbox.sh gelesen (Pfad muss dort identisch hartcodiert sein) - siehe
@@ -1478,7 +1482,11 @@ def telegram_wache_schleife():
             time.sleep(10)
             continue
         neuer_offset = telegram_update_verarbeiten(antwort, offset)
-        _telegram_offset_schreiben(neuer_offset)
+        # Nur bei echter Aenderung schreiben - getUpdates kehrt ohne neue
+        # Nachrichten alle ~25 s leer zurueck, das waeren sonst ~3.500
+        # unnoetige Schreibvorgaenge pro Tag auf die SD-Karte.
+        if neuer_offset != offset:
+            _telegram_offset_schreiben(neuer_offset)
 
 
 def pushover_stumm_rest_sekunden():
@@ -1769,6 +1777,16 @@ def _speicher_wechsel_anwenden():
     ])
 
 
+def _lade_letzte_oeffnung_dauerhaft():
+    """Fallback, solange (noch) kein Live-Status im RAM liegt - z. B. direkt
+    nach einem Neustart oder wenn honigbox.sh nicht laeuft."""
+    try:
+        with open(LETZTE_OEFFNUNG_PATH) as f:
+            return json.load(f).get("letzte_oeffnung")
+    except (json.JSONDecodeError, OSError, TypeError, AttributeError):
+        return None
+
+
 def lade_tuer_status():
     if os.path.isfile(STATUS_PATH):
         try:
@@ -1779,11 +1797,12 @@ def lade_tuer_status():
                 "tuer_offen": daten.get("tuer_offen"),
                 "alter_sekunden": round(time.time() - daten.get("aktualisiert", 0), 1),
                 "offen_dauer_sekunden": round(time.time() - offen_seit) if offen_seit else None,
-                "letzte_oeffnung": daten.get("letzte_oeffnung"),
+                "letzte_oeffnung": daten.get("letzte_oeffnung") or _lade_letzte_oeffnung_dauerhaft(),
             }
         except (json.JSONDecodeError, OSError, TypeError):
             pass
-    return {"tuer_offen": None, "alter_sekunden": None, "offen_dauer_sekunden": None, "letzte_oeffnung": None}
+    return {"tuer_offen": None, "alter_sekunden": None, "offen_dauer_sekunden": None,
+            "letzte_oeffnung": _lade_letzte_oeffnung_dauerhaft()}
 
 
 def aufraeum_schleife():

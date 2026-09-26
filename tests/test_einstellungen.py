@@ -245,7 +245,7 @@ def test_status_letzte_oeffnung_ohne_statusdatei_ist_none(server):
 
 
 def test_status_letzte_oeffnung_wird_durchgereicht(server):
-    """honigbox.sh schreibt letzte_oeffnung in .status.json - /api/status muss
+    """honigbox.sh schreibt letzte_oeffnung in den Live-Status (RAM) - /api/status muss
     das 1:1 durchreichen (Formatierung/Anzeige macht das Frontend)."""
     base_url, mod = server
     with open(mod.STATUS_PATH, "w") as f:
@@ -254,6 +254,20 @@ def test_status_letzte_oeffnung_wird_durchgereicht(server):
     status, data = get(base_url, "/api/status")
     assert status == 200
     assert data["tuer_letzte_oeffnung"] == 900.0
+
+
+def test_status_letzte_oeffnung_ohne_live_status_aus_dauerhafter_datei(server):
+    """Nach einem Neustart liegt noch kein Live-Status im RAM (/run ist leer) -
+    die letzte Oeffnung kommt dann aus der dauerhaften Datei auf der SD-Karte."""
+    base_url, mod = server
+    os.makedirs(os.path.dirname(mod.LETZTE_OEFFNUNG_PATH), exist_ok=True)
+    with open(mod.LETZTE_OEFFNUNG_PATH, "w") as f:
+        json.dump({"letzte_oeffnung": 800.0}, f)
+
+    status, data = get(base_url, "/api/status")
+    assert status == 200
+    assert data["tuer_offen"] is None
+    assert data["tuer_letzte_oeffnung"] == 800.0
 
 
 def test_extern_link_standard_aus(server):

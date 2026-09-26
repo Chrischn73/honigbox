@@ -33,6 +33,7 @@ def galerie_env(tmp_path, monkeypatch):
     monkeypatch.setenv("GALERIE_BILDER", str(bilder))
     monkeypatch.setenv("GALERIE_ARCHIV", str(archiv))
     monkeypatch.setenv("GALERIE_EINSTELLUNGEN_DIR", str(einstellungen))
+    monkeypatch.setenv("GALERIE_TUER_STATUS", str(tmp_path / "tuer-status.json"))
     monkeypatch.setenv("GALERIE_STATIC", str(os.path.join(REPO_ROOT, "static")))
     monkeypatch.setenv("GALERIE_USER", "")
     monkeypatch.setenv("GALERIE_PASSWORT", "")

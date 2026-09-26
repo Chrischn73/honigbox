@@ -22,7 +22,9 @@ import os
 import sys
 
 EPHEMER = {
-    ".status.json",
+    ".status.json",  # bis v1.3.35, seitdem im RAM (/run/honigbox)
+    ".letzte-oeffnung.json",  # aendert sich bei jeder Kunden-Oeffnung
+    ".letzte-oeffnung.json.tmp",
     ".telegram-update-offset",
     ".telegram-pending-codes.json",
     ".tuer-neustart-signal",
