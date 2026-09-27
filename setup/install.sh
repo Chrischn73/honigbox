@@ -279,6 +279,20 @@ JOURNALDEOF
 systemctl restart systemd-journald || true
 
 # ---------------------------------------------------------------------------
+log "apt-Paket-Cache nur im RAM aufbauen - schont die SD-Karte"
+# Nach jedem 'apt update' schreibt apt pkgcache.bin + srcpkgcache.bin
+# (zusammen ~140 MB) komplett neu. Mit einem Monitoring-Agent, der stuendlich
+# 'apt update' anstoesst (z. B. PatchMon), waren das ~3 GiB/Tag auf der
+# SD-Karte. Leerer Pfad = apt baut den Cache bei jedem Aufruf im Speicher auf
+# (auf dem Pi 4 ca. 3 s pro apt-Aufruf). Rueckbau: Datei loeschen.
+cat > /etc/apt/apt.conf.d/02honigbox-kein-pkgcache << 'APTCACHEEOF'
+// Angelegt von HonigBox setup/install.sh - kein Paket-Cache auf der SD-Karte.
+Dir::Cache::pkgcache "";
+Dir::Cache::srcpkgcache "";
+APTCACHEEOF
+rm -f /var/cache/apt/pkgcache.bin /var/cache/apt/srcpkgcache.bin
+
+# ---------------------------------------------------------------------------
 log "Archiv-Verschluesselung einrichten (Phase C)"
 cp "$SETUP_DIR/honigbox-archiv-entschluesseln.service" /etc/systemd/system/honigbox-archiv-entschluesseln.service
 cp "$SETUP_DIR/honigbox-archiv-tmpfiles.conf" /etc/tmpfiles.d/honigbox-archiv.conf
