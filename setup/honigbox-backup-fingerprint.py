@@ -19,6 +19,7 @@ Aufruf: honigbox-backup-fingerprint.py <app_ordner>
 """
 import hashlib
 import os
+import stat
 import sys
 
 EPHEMER = {
@@ -48,12 +49,19 @@ def fingerprint(src_dir):
                 continue
             path = os.path.join(root, name)
             h.update(os.path.join(rel_root, name).encode() + b"\0")
-            if os.path.islink(path):
+            modus = os.lstat(path).st_mode
+            if stat.S_ISLNK(modus):
                 h.update(b"link:" + os.readlink(path).encode())
-            else:
+            elif stat.S_ISREG(modus):
                 with open(path, "rb") as f:
                     for chunk in iter(lambda: f.read(65536), b""):
                         h.update(chunk)
+            else:
+                # FIFO/Socket/Geraet: NIE oeffnen - open() auf eine FIFO
+                # blockiert, bis ein Schreiber kommt. lgpio legt fuer
+                # honigbox.sh die FIFO .lgd-nfy0 in /opt/honigbox an, daran
+                # hing am 28.09.2026 das naechtliche Backup 14 h lang.
+                h.update(b"special:" + str(stat.S_IFMT(modus)).encode())
             h.update(b"\0")
     return h.hexdigest()
 

@@ -251,6 +251,10 @@ fi
 
 # ---------------------------------------------------------------------------
 log "Backup & Update-Check einrichten"
+# Einen evtl. haengenden Backup-Lauf beenden (bis v1.3.37 blockierte der
+# Fingerabdruck an der lgpio-FIFO .lgd-nfy0) - solange er "activating" ist,
+# startet der Timer keinen neuen Lauf. Kostet nichts, wenn keiner laeuft.
+systemctl stop honigbox-backup.service 2>/dev/null || true
 mkdir -p /opt/backup-scripts /opt/backup
 cp "$SETUP_DIR/honigbox-backup.sh" /opt/backup-scripts/honigbox-backup.sh
 cp "$SETUP_DIR/honigbox-backup-rotate.py" /opt/backup-scripts/honigbox-backup-rotate.py

@@ -58,9 +58,9 @@ copy_to_usb() {
     python3 "$ROTATE_SCRIPT" "$USB_MOUNT" "$MAX_BACKUPS"
 }
 
-# Schlaegt die Berechnung fehl, bleibt der Fingerabdruck leer -> es wird
-# sicherheitshalber ganz normal gesichert.
-fingerprint="$(python3 "$FINGERPRINT_SCRIPT" "$SRC_DIR" 2>/dev/null)" || fingerprint=""
+# Schlaegt die Berechnung fehl oder haengt sie (timeout), bleibt der
+# Fingerabdruck leer -> es wird sicherheitshalber ganz normal gesichert.
+fingerprint="$(timeout 120 python3 "$FINGERPRINT_SCRIPT" "$SRC_DIR" 2>/dev/null)" || fingerprint=""
 
 if [ "$NUR_BEI_AENDERUNG" = 1 ] && [ -n "$fingerprint" ] && [ -f "$FINGERPRINT_FILE" ] \
         && [ "$(cat "$FINGERPRINT_FILE")" = "$fingerprint" ]; then
