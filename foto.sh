@@ -1,6 +1,6 @@
 #!/bin/bash
 mkdir -p /opt/honigbox/fotos/Bilder/
-chmod 777 /opt/honigbox/fotos/Bilder/
+chmod 777 /opt/honigbox/fotos/Bilder/ 2>/dev/null
 cd /opt/honigbox/fotos/Bilder/
 
 # rpicam-still (Bookworm) statt libcamera-still (aeltere Versionen), je nachdem was vorhanden ist
@@ -83,6 +83,11 @@ fi
 # Das Loeschen zu dunkler Fotos passiert bewusst NICHT hier (wuerde die Aufnahme-
 # Taktung durch den Pillow-Start pro Bild ausbremsen), sondern gesammelt in
 # honigbox.sh, nachdem die Tuer wieder zu ist (siehe dunkle_fotos_aufraeumen()).
-"$KAMERA_BEFEHL" "${KAMERA_ARGS[@]}" >/dev/null 2>&1
+# timeout: ein haengender rpicam-still (kam vor, ueber 30 Min.) blockiert sonst die
+# Kamera fuer ALLE folgenden Fotos. Exit-Code wird durchgereicht, damit Aufrufer
+# (z.B. /api/foto/einzel) einen Fehlschlag erkennen statt "aufgenommen" zu melden.
+timeout -k 5 20 "$KAMERA_BEFEHL" "${KAMERA_ARGS[@]}" >/dev/null 2>&1
+RC=$?
 
 cd /opt/honigbox/
+exit $RC

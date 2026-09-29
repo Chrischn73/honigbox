@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.38';
+const APP_VERSION = 'v1.3.39';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -1477,7 +1477,9 @@ async function fotoAufnehmen() {
         fotoTestErgebnisEl.hidden = true;
       }
     } else {
-      toast('Fehler bei der Aufnahme');
+      let meldung = 'Fehler bei der Aufnahme';
+      try { const f = await res.json(); if (f.error) meldung += `\n${f.error}`; } catch {}
+      toast(meldung);
     }
   } catch {
     toast('Fehler bei der Aufnahme');

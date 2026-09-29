@@ -2522,6 +2522,7 @@ class Handler(BaseHTTPRequestHandler):
             if not bilder_bereit():
                 return self._err(503, "Speicher ist gerade nicht verfügbar (Verschlüsselung noch nicht entsperrt).")
             testmodus_aktiv = foto_testmodus_rest_sekunden() > 0
+            vorher = set(os.listdir(BILDER_DIR)) if os.path.isdir(BILDER_DIR) else set()
             befehl = [FOTO_SCRIPT, FOTO_TESTMODUS_METADATA_PATH] if testmodus_aktiv else [FOTO_SCRIPT]
             try:
                 ergebnis = subprocess.run(befehl, timeout=30)
@@ -2530,7 +2531,10 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as e:
                 return self._err(500, str(e))
             if ergebnis.returncode != 0:
-                return self._err(500, "Kamera-Skript fehlgeschlagen")
+                return self._err(500, "Kamera-Skript fehlgeschlagen (Kamera belegt oder defekt?)")
+            neu = [f for f in os.listdir(BILDER_DIR) if f not in vorher and sichere_dateiname(f)]
+            if not neu:
+                return self._err(500, "Kamera hat kein Foto geliefert")
             geloescht, helligkeit = einzelfoto_helligkeit_pruefen()
             antwort = {"ok": True, "geloescht": geloescht, "helligkeit": helligkeit}
             if testmodus_aktiv:
