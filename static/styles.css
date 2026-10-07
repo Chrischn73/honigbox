@@ -66,8 +66,10 @@ body{
 .topbar-setup-btn:active{background:rgba(255,255,255,.22)}
 .topbar h1{font-size:1.15rem; font-weight:650; margin:0; letter-spacing:.2px}
 .app-version-tag{font-size:.7rem; font-weight:400; color:#fff; opacity:.6; margin-left:.4rem; vertical-align:middle}
-.topbar-by{display:flex; align-items:center; gap:.4rem; font-size:.75rem; color:rgba(255,255,255,.75)}
-.topbar-logo{height:30px; width:auto; display:block; border-radius:3px}
+/* min-width:0 + max-width:100%: auf schmalen Handys schrumpft das Logo,
+   statt den Setup-Button ueber den rechten Rand zu schieben. */
+.topbar-by{display:flex; align-items:center; gap:.4rem; min-width:0; font-size:.75rem; color:rgba(255,255,255,.75)}
+.topbar-logo{height:44px; width:auto; max-width:min(170px, 100%); min-width:0; object-fit:contain; object-position:left center; display:block; border-radius:3px}
 .logo-vorschau{display:block; max-height:60px; max-width:200px; object-fit:contain; margin:.3rem 0; border-radius:3px}
 
 .status-leiste{display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:.5rem;
