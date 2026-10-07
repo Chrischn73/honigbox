@@ -18,7 +18,7 @@
       </div>
       <div class="topbar-zeile">
         <div class="topbar-by">
-          by <img src="./imkerei-logo.jpeg" alt="Imkerei Frerichs" class="topbar-logo">
+          <span id="topbar-by-text">by</span> <img src="./api/logo" alt="Logo" class="topbar-logo" id="topbar-logo">
         </div>
         <a class="topbar-setup-btn" id="link-setup-seite" href="#">⚙️ Setup / Update / Backup</a>
       </div>
@@ -331,6 +331,19 @@
         </div>
         <div class="kamera-aktionen">
           <button class="btn btn-sm btn-primary" id="start-buttons-speichern">Speichern</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>🖼️ Logo</summary>
+        <p class="muted" style="font-size:.85rem; margin-top:0;">Eigenes Logo für die Kopfzeile (JPEG oder PNG).
+        Ohne eigenes Logo wird das Standard-Logo angezeigt.</p>
+        <img id="logo-vorschau" class="logo-vorschau" src="./api/logo" alt="Aktuelles Logo">
+        <p class="muted" id="logo-hinweis" style="font-size:.85rem;"></p>
+        <div class="kamera-aktionen">
+          <label class="btn btn-sm btn-primary" for="logo-datei">📂 Logo hochladen</label>
+          <input type="file" id="logo-datei" accept="image/png,image/jpeg" hidden>
+          <button class="btn btn-sm" id="logo-zuruecksetzen" hidden>Standard-Logo verwenden</button>
         </div>
       </details>
 

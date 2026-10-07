@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.39';
+const APP_VERSION = 'v1.3.40';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -26,6 +26,12 @@ const startButtonsMessengerInp = document.getElementById('start-buttons-messenge
 const startButtonsFotosInp = document.getElementById('start-buttons-fotos');
 const startButtonsMessengerFotosInp = document.getElementById('start-buttons-messenger-fotos');
 const startButtonsSpeichernBtn = document.getElementById('start-buttons-speichern');
+const topbarLogoImg = document.getElementById('topbar-logo');
+const topbarByTextEl = document.getElementById('topbar-by-text');
+const logoVorschauImg = document.getElementById('logo-vorschau');
+const logoHinweisEl = document.getElementById('logo-hinweis');
+const logoDateiInp = document.getElementById('logo-datei');
+const logoZuruecksetzenBtn = document.getElementById('logo-zuruecksetzen');
 const tabFotos = document.getElementById('tab-fotos');
 const tabArchiv = document.getElementById('tab-archiv');
 const alleAuswaehlenCb = document.getElementById('alle-auswaehlen-cb');
@@ -720,6 +726,88 @@ async function speichereExternLink() {
     toast('Fehler beim Speichern');
   } finally {
     externLinkSpeichernBtn.disabled = false;
+  }
+}
+
+// Kopfzeile + Vorschau nach Upload/Zuruecksetzen neu laden - der
+// Zeitstempel umgeht den Browser-Cache (gleiche URL, anderes Bild).
+function aktualisiereLogoAnzeige(eigenes) {
+  const url = `./api/logo?t=${Date.now()}`;
+  topbarLogoImg.src = url;
+  // "by" gehoert zum Standard-Logo (Entwickler) - vor einem eigenen
+  // Betriebslogo waere es irrefuehrend.
+  topbarByTextEl.hidden = eigenes;
+  logoVorschauImg.src = url;
+  logoHinweisEl.textContent = eigenes ? 'Eigenes Logo aktiv.' : 'Standard-Logo aktiv.';
+  logoZuruecksetzenBtn.hidden = !eigenes;
+}
+
+async function ladeLogoStatus() {
+  try {
+    const res = await fetch('/api/logo/status');
+    const data = await res.json();
+    aktualisiereLogoAnzeige(!!data.eigenes);
+  } catch {
+    toast('Logo-Einstellung konnte nicht geladen werden');
+  }
+}
+
+// Verkleinert auf max. 800 px Kantenlaenge (Handy-Fotos haben schnell
+// mehrere MB). PNG bleibt PNG, damit Transparenz erhalten bleibt - als
+// JPEG wuerden transparente Flaechen schwarz.
+function logoVerkleinern(datei, maxKante = 800) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(datei);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const faktor = Math.min(1, maxKante / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * faktor);
+      c.height = Math.round(img.height * faktor);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const typ = datei.type === 'image/png' ? 'image/png' : 'image/jpeg';
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error('Bild fehlerhaft'))), typ, 0.88);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Bild konnte nicht gelesen werden')); };
+    img.src = url;
+  });
+}
+
+async function logoHochladen() {
+  const datei = logoDateiInp.files[0];
+  if (!datei) return;
+  logoDateiInp.disabled = true;
+  try {
+    const blob = await logoVerkleinern(datei);
+    const res = await fetch('/api/logo', { method: 'POST', body: blob });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      aktualisiereLogoAnzeige(true);
+      toast('Logo gespeichert');
+    } else {
+      toast(data.error || 'Fehler beim Speichern');
+    }
+  } catch (e) {
+    toast(e.message || 'Fehler beim Speichern');
+  } finally {
+    logoDateiInp.disabled = false;
+    logoDateiInp.value = '';
+  }
+}
+
+async function logoZuruecksetzen() {
+  if (!confirm('Eigenes Logo entfernen und wieder das Standard-Logo anzeigen?')) return;
+  try {
+    const res = await fetch('/api/logo/zuruecksetzen', { method: 'POST' });
+    if (res.ok) {
+      aktualisiereLogoAnzeige(false);
+      toast('Standard-Logo wird verwendet');
+    } else {
+      toast('Fehler beim Zurücksetzen');
+    }
+  } catch {
+    toast('Fehler beim Zurücksetzen');
   }
 }
 
@@ -1985,6 +2073,8 @@ fotoZeitplanSpeichernBtn.addEventListener('click', speichereFotoZeitplan);
 galerieAnzeigeModusSel.addEventListener('change', speichereGalerieAnzeigeModus);
 externLinkSpeichernBtn.addEventListener('click', speichereExternLink);
 startButtonsSpeichernBtn.addEventListener('click', speichereStartButtons);
+logoDateiInp.addEventListener('change', logoHochladen);
+logoZuruecksetzenBtn.addEventListener('click', logoZuruecksetzen);
 fotoZeitplanZuruecksetzenBtn.addEventListener('click', fotoZeitplanZuruecksetzen);
 pushoverSpeichernBtn.addEventListener('click', speicherePushoverEinstellungen);
 pushoverAlleAktivierenBtn.addEventListener('click', () => pushoverAlleSetzen(true));
@@ -2029,6 +2119,7 @@ ladeSpeicherEinstellungen();
 ladeGalerieAnzeigeModus();
 ladeExternLink();
 ladeStartButtons();
+ladeLogoStatus();
 laden();
 ladeStatus();
 setInterval(ladeStatus, 5000);

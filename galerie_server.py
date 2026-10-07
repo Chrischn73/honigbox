@@ -649,6 +649,13 @@ EXTERN_LINK_STANDARD = {"aktiv": False, "url": "", "label": "🐝 Verkauf erfass
 START_BUTTONS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".start-buttons-sichtbar.json")
 START_BUTTONS_STANDARD = {"messenger": False, "fotos": False, "messenger_fotos": True}
 
+# Eigenes Logo in der Kopfzeile (Einstellungen -> Logo). Ohne eigenes Logo
+# wird das mitgelieferte Standard-Logo gezeigt. Liegt in EINSTELLUNGEN_DIR,
+# kommt damit beim Backup/Restore automatisch mit.
+LOGO_PATH = os.path.join(EINSTELLUNGEN_DIR, ".logo")
+LOGO_STANDARD_PATH = os.path.join(STATIC_DIR, "imkerei-logo.jpeg")
+LOGO_MAX_BYTES = 2 * 1024 * 1024
+
 SPEICHER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".speicher-einstellungen.json")
 SIMULATION_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".simulation-einstellungen.json")
 SIMULATION_DAUER_STANDARD_SEK = 120
@@ -1675,6 +1682,55 @@ def speichere_extern_link(rohdaten):
     return werte
 
 
+def logo_bildtyp(daten):
+    """Content-Type anhand der Magic Bytes - die Endung/der vom Browser
+    gemeldete Typ zaehlt bewusst nicht. Nur JPEG/PNG (kein SVG: das koennte
+    Skripte enthalten)."""
+    if daten.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if daten.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    return None
+
+
+def eigenes_logo_vorhanden():
+    return os.path.isfile(LOGO_PATH)
+
+
+def lade_logo():
+    """(Bytes, Content-Type) des eigenen Logos, sonst des Standard-Logos."""
+    if eigenes_logo_vorhanden():
+        with open(LOGO_PATH, "rb") as f:
+            daten = f.read()
+        typ = logo_bildtyp(daten)
+        if typ:
+            return daten, typ
+    with open(LOGO_STANDARD_PATH, "rb") as f:
+        return f.read(), "image/jpeg"
+
+
+def speichere_logo(daten):
+    if not daten:
+        raise ValueError("Keine Bilddaten empfangen")
+    if len(daten) > LOGO_MAX_BYTES:
+        raise ValueError("Logo ist zu groß (maximal 2 MB)")
+    if not logo_bildtyp(daten):
+        raise ValueError("Nur JPEG- oder PNG-Bilder möglich")
+    # Erst Temp-Datei, dann umbenennen - ein abgebrochener Upload hinterlaesst
+    # so nie ein halbes Logo.
+    tmp = LOGO_PATH + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(daten)
+    os.replace(tmp, LOGO_PATH)
+
+
+def loesche_logo():
+    try:
+        os.remove(LOGO_PATH)
+    except FileNotFoundError:
+        pass
+
+
 def lade_start_buttons():
     return _lade_einstellungen_datei(START_BUTTONS_PATH, START_BUTTONS_STANDARD)
 
@@ -2257,6 +2313,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(lade_extern_link())
         if path == "/api/start-buttons":
             return self._json(lade_start_buttons())
+        if path == "/api/logo":
+            daten, typ = lade_logo()
+            return self._bytes(daten, typ)
+        if path == "/api/logo/status":
+            return self._json({"eigenes": eigenes_logo_vorhanden()})
         if path == "/api/speicher":
             return self._json(speicher_status())
         if path == "/api/kamera":
@@ -2291,6 +2352,18 @@ class Handler(BaseHTTPRequestHandler):
         self._err(404, "Not found")
 
     def api_post(self, path):
+        if path == "/api/logo":
+            laenge = int(self.headers.get("Content-Length", 0))
+            if laenge > LOGO_MAX_BYTES:
+                return self._err(413, "Logo ist zu groß (maximal 2 MB)")
+            try:
+                speichere_logo(self.rfile.read(laenge) if laenge > 0 else b"")
+            except ValueError as e:
+                return self._err(400, str(e))
+            return self._json({"eigenes": True})
+        if path == "/api/logo/zuruecksetzen":
+            loesche_logo()
+            return self._json({"eigenes": False})
         if path == "/api/photos/archivieren":
             if not archiv_bereit():
                 return self._err(503, "Archiv ist gerade nicht verfügbar (Verschlüsselung noch nicht entsperrt).")
