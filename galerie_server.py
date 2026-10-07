@@ -666,7 +666,7 @@ PUSHOVER_STUMM_PATH = os.path.join(EINSTELLUNGEN_DIR, ".pushover-stumm-bis.json"
 # weiter unten) - bewusst getrennt von PUSHOVER_STUMM_PATH, damit sich Fotos und
 # Messenger unabhaengig voneinander pausieren lassen (drei Buttons auf der Startseite).
 FOTOS_PAUSE_PATH = os.path.join(EINSTELLUNGEN_DIR, ".fotos-pause-bis.json")
-PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [3, 5, 10, 20, 30]
+PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [2, 3, 5, 10, 30]
 PUSHOVER_STUMM_DAUER_STANDARD_MIN = 5
 
 # Foto-Testmodus: Einzelfoto-Button liefert waehrend dieser Zeit zusaetzlich

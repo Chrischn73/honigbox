@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.41';
+const APP_VERSION = 'v1.3.42';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -90,7 +90,7 @@ const kameraFehltWarnungEl = document.getElementById('kamera-fehlt-warnung');
 const btnPushoverStumm = document.getElementById('btn-pushover-stumm');
 const btnPushoverStummFotos = document.getElementById('btn-pushover-stumm-fotos');
 const btnFotosPause = document.getElementById('btn-fotos-pause');
-const PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [3, 5, 10, 20, 30];
+const PUSHOVER_STUMM_DAUER_OPTIONEN_MIN = [2, 3, 5, 10, 30];
 const STATUS_VERALTET_NACH_SEK = 15;
 const hauptTabBtns = document.querySelectorAll('.haupt-tab-btn');
 const ansichten = document.querySelectorAll('.ansicht');
@@ -395,6 +395,9 @@ async function ladeStatus() {
 }
 
 function zeigeAnsicht(name) {
+  // Beim Wechsel in die Einstellungen immer mit zugeklappten Abschnitten
+  // starten - nur die Uebersicht der Hauptpunkte, nichts vom letzten Mal.
+  if (name === 'einstellungen') einstellungenDetailsListe.forEach((d) => { d.open = false; });
   ansichten.forEach((el) => el.classList.toggle('hidden', el.id !== `ansicht-${name}`));
   hauptTabBtns.forEach((btn) => btn.classList.toggle('aktiv', btn.dataset.ansicht === name));
 }

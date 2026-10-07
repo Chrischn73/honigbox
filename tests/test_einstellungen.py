@@ -378,6 +378,19 @@ def test_pushover_stumm_mit_unzulaessiger_dauer_faellt_auf_standard_zurueck(serv
     assert 295 <= data["rest_sekunden"] <= 300
 
 
+def test_stumm_und_pause_dauern_seit_v1_3_42(server):
+    """Seit v1.3.42 2/3/5/10/30 Min. (vorher 3/5/10/20/30): 2 wird
+    angenommen, das weggefallene 20 faellt auf den Standard (5) zurueck."""
+    base_url, _ = server
+    for pfad in ("/api/pushover/stumm", "/api/fotos-pause"):
+        status, data = post(base_url, pfad, {"aktiv": True, "dauer_minuten": 2})
+        assert status == 200
+        assert 115 <= data["rest_sekunden"] <= 120, pfad
+        status, data = post(base_url, pfad, {"aktiv": True, "dauer_minuten": 20})
+        assert status == 200
+        assert 295 <= data["rest_sekunden"] <= 300, pfad
+
+
 def test_speicher_einstellungen_ram_ist_standard(server):
     base_url, _ = server
     status, data = get(base_url, "/api/speicher")

@@ -93,38 +93,6 @@
       </details>
 
       <details class="kamera-details">
-        <summary>💾 Speicherort</summary>
-        <p class="muted test-hinweis">Bestimmt, wo aktuelle (noch nicht archivierte) Fotos abgelegt werden. Das Archiv bleibt davon unberührt und liegt immer auf der SD-Karte.</p>
-        <div class="kamera-felder">
-          <div class="kamera-feld">
-            <label for="speicher-ort">Speicherort</label>
-            <select id="speicher-ort">
-              <option value="ram">RAM-Speicher (schneller, schont die SD-Karte)</option>
-              <option value="platte">SD-Karte (bleibt auch bei Stromausfall erhalten)</option>
-            </select>
-          </div>
-          <div class="kamera-feld" id="speicher-groesse-feld">
-            <label for="speicher-groesse">Größe des RAM-Speichers (MB)</label>
-            <input type="number" id="speicher-groesse" min="32" max="2048" step="16">
-          </div>
-        </div>
-        <p class="muted" id="speicher-info">Lade Speicher-Informationen…</p>
-        <p class="warnhinweis">⚠️ Fotos im RAM-Speicher gehen bei jedem Neustart/Herunterfahren/Stromausfall verloren, wenn sie vorher nicht archiviert wurden. Beim Umschalten werden bestehende Fotos automatisch mitgenommen, beide Dienste starten dabei kurz neu.</p>
-        <div class="kamera-aktionen">
-          <button class="btn btn-sm btn-primary" id="speicher-uebernehmen">Übernehmen</button>
-        </div>
-      </details>
-
-      <details class="kamera-details">
-        <summary>📸 Kamera-Einstellungen</summary>
-        <div id="kamera-felder" class="kamera-felder"></div>
-        <div class="kamera-aktionen">
-          <button class="btn btn-sm btn-primary" id="kamera-speichern">Speichern</button>
-          <button class="btn btn-sm btn-ghost" id="kamera-zuruecksetzen">Zurücksetzen auf Standard</button>
-        </div>
-      </details>
-
-      <details class="kamera-details">
         <summary>🔔 Pushover-Einstellungen</summary>
         <div class="kamera-feld checkbox-feld">
           <label for="pushover-aktiv">Pushover aktiv</label>
@@ -175,6 +143,114 @@
         </div>
         <div id="telegram-verbinden-box" class="msg" hidden></div>
         <div id="telegram-chats-liste"></div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>🔘 Start-Buttons</summary>
+        <p class="muted" style="font-size:.85rem; margin-top:0;">Welche der Stumm-/Pause-Buttons oben auf der
+        Startseite überhaupt angezeigt werden.</p>
+        <div class="kamera-feld checkbox-feld">
+          <label for="start-buttons-messenger">🔕 Messenger aus</label>
+          <input type="checkbox" id="start-buttons-messenger">
+        </div>
+        <div class="kamera-feld checkbox-feld">
+          <label for="start-buttons-fotos">📷 Fotos aus</label>
+          <input type="checkbox" id="start-buttons-fotos">
+        </div>
+        <div class="kamera-feld checkbox-feld">
+          <label for="start-buttons-messenger-fotos">🔕📷 Messenger + Fotos aus</label>
+          <input type="checkbox" id="start-buttons-messenger-fotos">
+        </div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="start-buttons-speichern">Speichern</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>📸 Kamera-Einstellungen</summary>
+        <div id="kamera-felder" class="kamera-felder"></div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="kamera-speichern">Speichern</button>
+          <button class="btn btn-sm btn-ghost" id="kamera-zuruecksetzen">Zurücksetzen auf Standard</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>💾 Speicherort</summary>
+        <p class="muted test-hinweis">Bestimmt, wo aktuelle (noch nicht archivierte) Fotos abgelegt werden. Das Archiv bleibt davon unberührt und liegt immer auf der SD-Karte.</p>
+        <div class="kamera-felder">
+          <div class="kamera-feld">
+            <label for="speicher-ort">Speicherort</label>
+            <select id="speicher-ort">
+              <option value="ram">RAM-Speicher (schneller, schont die SD-Karte)</option>
+              <option value="platte">SD-Karte (bleibt auch bei Stromausfall erhalten)</option>
+            </select>
+          </div>
+          <div class="kamera-feld" id="speicher-groesse-feld">
+            <label for="speicher-groesse">Größe des RAM-Speichers (MB)</label>
+            <input type="number" id="speicher-groesse" min="32" max="2048" step="16">
+          </div>
+        </div>
+        <p class="muted" id="speicher-info">Lade Speicher-Informationen…</p>
+        <p class="warnhinweis">⚠️ Fotos im RAM-Speicher gehen bei jedem Neustart/Herunterfahren/Stromausfall verloren, wenn sie vorher nicht archiviert wurden. Beim Umschalten werden bestehende Fotos automatisch mitgenommen, beide Dienste starten dabei kurz neu.</p>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="speicher-uebernehmen">Übernehmen</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>🖼️ Logo</summary>
+        <p class="muted" style="font-size:.85rem; margin-top:0;">Eigenes Logo für die Kopfzeile (JPEG oder PNG).
+        Ohne eigenes Logo wird das Standard-Logo angezeigt.</p>
+        <img id="logo-vorschau" class="logo-vorschau" src="./api/logo" alt="Aktuelles Logo">
+        <p class="muted" id="logo-hinweis" style="font-size:.85rem;"></p>
+        <div class="kamera-aktionen">
+          <label class="btn btn-sm btn-primary" for="logo-datei">📂 Logo hochladen</label>
+          <input type="file" id="logo-datei" accept="image/png,image/jpeg" hidden>
+          <button class="btn btn-sm" id="logo-zuruecksetzen" hidden>Standard-Logo verwenden</button>
+        </div>
+      </details>
+
+      <details class="kamera-details">
+        <summary>🔗 Externer Link</summary>
+        <p class="muted" style="font-size:.85rem; margin-top:0;">Blendet bei den Aufnahmen einen Button ein, der eine
+        frei wählbare Adresse in einem neuen Tab öffnet - z. B. die "Erfassen"-Seite der Imkerei-App.</p>
+        <div class="kamera-feld checkbox-feld">
+          <label for="extern-link-aktiv">Button anzeigen</label>
+          <input type="checkbox" id="extern-link-aktiv">
+        </div>
+        <div class="kamera-felder">
+          <div class="kamera-feld">
+            <label for="extern-link-label">Name (Button-Text)</label>
+            <input type="text" id="extern-link-label" placeholder="🐝 Verkauf erfassen">
+          </div>
+          <div class="kamera-feld">
+            <label for="extern-link-url">Adresse (URL)</label>
+            <input type="text" id="extern-link-url" placeholder="http://192.168.155.198:8090/">
+          </div>
+        </div>
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-primary" id="extern-link-speichern">Speichern</button>
+        </div>
+      </details>
+
+      <details class="kamera-details system-details">
+        <summary>⚡ System</summary>
+        <p class="warnhinweis" id="ram-neustart-warnung" hidden>⚠️ Fotos liegen aktuell im RAM-Speicher (Einstellung unter „📷 Fotos“ → „Speicherort“) – bei Neustart/Herunterfahren gehen alle noch nicht archivierten Fotos dabei verloren.</p>
+
+        <div class="kamera-feld checkbox-feld">
+          <label for="tuer-kontakt-invertiert">Türkontakt umdrehen</label>
+          <input type="checkbox" id="tuer-kontakt-invertiert">
+        </div>
+        <p class="muted" style="font-size:.8rem; margin:.2rem 0 .8rem;">Nur falls der Schalter versehentlich als
+        Öffner statt Schließer angeschlossen wurde und die Tür-Anzeige deshalb dauerhaft verkehrt steht.</p>
+        <button class="btn btn-sm btn-ghost" id="tuer-kontakt-speichern" style="margin-bottom:1.2rem;">Speichern</button>
+
+        <div class="kamera-aktionen">
+          <button class="btn btn-sm btn-ghost" id="btn-dienste-neustart">🔁 Dienste neu starten</button>
+          <button class="btn btn-sm btn-danger" id="btn-neustart">🔄 Pi neu starten</button>
+          <button class="btn btn-sm btn-danger" id="btn-herunterfahren">⏻ Pi herunterfahren</button>
+        </div>
       </details>
 
       <details class="kamera-details">
@@ -288,82 +364,6 @@
         </ol>
         <p class="muted" style="font-size:.85rem;">Mehrere Personen (z. B. der ganze Haushalt) können sich
         unabhängig voneinander mit demselben Bot verbinden und bekommen dann alle Benachrichtigungen.</p>
-      </details>
-
-      <details class="kamera-details">
-        <summary>🔗 Externer Link</summary>
-        <p class="muted" style="font-size:.85rem; margin-top:0;">Blendet bei den Aufnahmen einen Button ein, der eine
-        frei wählbare Adresse in einem neuen Tab öffnet - z. B. die "Erfassen"-Seite der Imkerei-App.</p>
-        <div class="kamera-feld checkbox-feld">
-          <label for="extern-link-aktiv">Button anzeigen</label>
-          <input type="checkbox" id="extern-link-aktiv">
-        </div>
-        <div class="kamera-felder">
-          <div class="kamera-feld">
-            <label for="extern-link-label">Name (Button-Text)</label>
-            <input type="text" id="extern-link-label" placeholder="🐝 Verkauf erfassen">
-          </div>
-          <div class="kamera-feld">
-            <label for="extern-link-url">Adresse (URL)</label>
-            <input type="text" id="extern-link-url" placeholder="http://192.168.155.198:8090/">
-          </div>
-        </div>
-        <div class="kamera-aktionen">
-          <button class="btn btn-sm btn-primary" id="extern-link-speichern">Speichern</button>
-        </div>
-      </details>
-
-      <details class="kamera-details">
-        <summary>🔘 Start-Buttons</summary>
-        <p class="muted" style="font-size:.85rem; margin-top:0;">Welche der Stumm-/Pause-Buttons oben auf der
-        Startseite überhaupt angezeigt werden.</p>
-        <div class="kamera-feld checkbox-feld">
-          <label for="start-buttons-messenger">🔕 Messenger aus</label>
-          <input type="checkbox" id="start-buttons-messenger">
-        </div>
-        <div class="kamera-feld checkbox-feld">
-          <label for="start-buttons-fotos">📷 Fotos aus</label>
-          <input type="checkbox" id="start-buttons-fotos">
-        </div>
-        <div class="kamera-feld checkbox-feld">
-          <label for="start-buttons-messenger-fotos">🔕📷 Messenger + Fotos aus</label>
-          <input type="checkbox" id="start-buttons-messenger-fotos">
-        </div>
-        <div class="kamera-aktionen">
-          <button class="btn btn-sm btn-primary" id="start-buttons-speichern">Speichern</button>
-        </div>
-      </details>
-
-      <details class="kamera-details">
-        <summary>🖼️ Logo</summary>
-        <p class="muted" style="font-size:.85rem; margin-top:0;">Eigenes Logo für die Kopfzeile (JPEG oder PNG).
-        Ohne eigenes Logo wird das Standard-Logo angezeigt.</p>
-        <img id="logo-vorschau" class="logo-vorschau" src="./api/logo" alt="Aktuelles Logo">
-        <p class="muted" id="logo-hinweis" style="font-size:.85rem;"></p>
-        <div class="kamera-aktionen">
-          <label class="btn btn-sm btn-primary" for="logo-datei">📂 Logo hochladen</label>
-          <input type="file" id="logo-datei" accept="image/png,image/jpeg" hidden>
-          <button class="btn btn-sm" id="logo-zuruecksetzen" hidden>Standard-Logo verwenden</button>
-        </div>
-      </details>
-
-      <details class="kamera-details system-details">
-        <summary>⚡ System</summary>
-        <p class="warnhinweis" id="ram-neustart-warnung" hidden>⚠️ Fotos liegen aktuell im RAM-Speicher (Einstellung unter „📷 Fotos“ → „Speicherort“) – bei Neustart/Herunterfahren gehen alle noch nicht archivierten Fotos dabei verloren.</p>
-
-        <div class="kamera-feld checkbox-feld">
-          <label for="tuer-kontakt-invertiert">Türkontakt umdrehen</label>
-          <input type="checkbox" id="tuer-kontakt-invertiert">
-        </div>
-        <p class="muted" style="font-size:.8rem; margin:.2rem 0 .8rem;">Nur falls der Schalter versehentlich als
-        Öffner statt Schließer angeschlossen wurde und die Tür-Anzeige deshalb dauerhaft verkehrt steht.</p>
-        <button class="btn btn-sm btn-ghost" id="tuer-kontakt-speichern" style="margin-bottom:1.2rem;">Speichern</button>
-
-        <div class="kamera-aktionen">
-          <button class="btn btn-sm btn-ghost" id="btn-dienste-neustart">🔁 Dienste neu starten</button>
-          <button class="btn btn-sm btn-danger" id="btn-neustart">🔄 Pi neu starten</button>
-          <button class="btn btn-sm btn-danger" id="btn-herunterfahren">⏻ Pi herunterfahren</button>
-        </div>
       </details>
 
       <hr class="spenden-trenner">
