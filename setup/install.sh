@@ -82,6 +82,12 @@ sleep 5
 log "Systemupdate (kann einige Minuten dauern)"
 export DEBIAN_FRONTEND=noninteractive
 
+# Alle apt-get-Aufrufe in diesem Skript warten bis zu 10 Min. auf die dpkg-Sperre,
+# statt sofort mit "Could not get lock" abzubrechen (set -e!): auf der Box
+# laeuft taeglich apt-daily-upgrade (unattended-upgrades) und kann die Sperre
+# gerade halten, wenn die nachtliche Auto-Reparatur dieses Skript startet.
+apt-get() { command apt-get -o DPkg::Lock::Timeout=600 "$@"; }
+
 apt_tries=0
 until apt-get update; do
     apt_tries=$((apt_tries + 1))
@@ -120,8 +126,12 @@ systemctl enable --now haveged
 # per Release-Update oben mitgezogen.
 apt-get install -y unattended-upgrades || \
     echo "WARNUNG: Konnte unattended-upgrades nicht installieren - es gibt dann keine automatischen Sicherheitsupdates."
-cat > /etc/apt/apt.conf.d/52honigbox-unattended-upgrades << 'UUEOF'
-// Angelegt von HonigBox setup/install.sh. Rueckbau: Datei loeschen.
+# Neutraler Dateiname, identisch in HonigBox und BeeTown (install.sh): sind beide
+# Apps auf einem Pi, schreibt die zweite dieselbe Datei nur erneut (idempotent).
+# Alter HonigBox-Dateiname (bis v1.3.44) wird dabei abgeloest.
+rm -f /etc/apt/apt.conf.d/52honigbox-unattended-upgrades
+cat > /etc/apt/apt.conf.d/52pi-unattended-upgrades << 'UUEOF'
+// Angelegt von setup/install.sh (HonigBox/BeeTown). Rueckbau: Datei loeschen.
 Unattended-Upgrade::Origins-Pattern {
         "origin=Debian,codename=${distro_codename},label=Debian-Security";
         "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
@@ -133,7 +143,7 @@ Unattended-Upgrade::Automatic-Reboot "false";
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
 UUEOF
 cat > /etc/apt/apt.conf.d/20auto-upgrades << 'AUEOF'
-// Angelegt von HonigBox setup/install.sh: Paketlisten + Sicherheitsupdates woechentlich.
+// Angelegt von setup/install.sh (HonigBox/BeeTown): Paketlisten + Sicherheitsupdates woechentlich.
 APT::Periodic::Update-Package-Lists "7";
 APT::Periodic::Unattended-Upgrade "7";
 APT::Periodic::AutocleanInterval "7";

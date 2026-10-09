@@ -308,8 +308,12 @@ def main():
             open(STILLER_NEUSTART_MARKER, "w").close()
         except OSError:
             pass
-        subprocess.run(["systemctl", "restart", "honigbox.service", "honigbox-galerie.service"],
-                       check=False)
+        dienste = ["honigbox.service", "honigbox-galerie.service"]
+        # Laeuft auf derselben Box auch die Imker-App (BeeTown), bekommt sie die
+        # aktualisierten Bibliotheken ebenfalls.
+        if os.path.exists("/etc/systemd/system/imkerei.service"):
+            dienste.append("imkerei.service")
+        subprocess.run(["systemctl", "restart", *dienste], check=False)
         return 0
 
     schreibe_status(einstellungen, grund)
