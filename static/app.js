@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.42';
+const APP_VERSION = 'v1.3.43';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -51,6 +51,10 @@ const btnHerunterfahren = document.getElementById('btn-herunterfahren');
 const btnDiensteNeustart = document.getElementById('btn-dienste-neustart');
 const tuerKontaktInvertiertCb = document.getElementById('tuer-kontakt-invertiert');
 const tuerKontaktSpeichernBtn = document.getElementById('tuer-kontakt-speichern');
+const sysupdAutoNeustartCb = document.getElementById('sysupd-auto-neustart');
+const sysupdIntervallSel = document.getElementById('sysupd-intervall');
+const sysupdStatusEl = document.getElementById('sysupd-status');
+const sysupdSpeichernBtn = document.getElementById('sysupd-speichern');
 const btnTuerSimulieren = document.getElementById('btn-tuer-simulieren');
 const simMinutenInp = document.getElementById('sim-minuten');
 const simSekundenInp = document.getElementById('sim-sekunden');
@@ -1131,6 +1135,57 @@ async function speichereTuerEinstellungen() {
   }
 }
 
+function formatSysupdDatum(ts) {
+  return new Date(ts * 1000).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function renderSysupdStatus(status) {
+  const teile = [];
+  if (status && status.geprueft) {
+    teile.push('Letzte Prüfung: ' + formatSysupdDatum(status.geprueft));
+    if (status.letztes_update) teile.push('Letztes Systemupdate: ' + formatSysupdDatum(status.letztes_update));
+    teile.push(status.neustart_noetig
+      ? 'Neustart nötig (' + (status.grund || 'Systemupdate') + ')'
+      : 'Kein Neustart nötig');
+    if (status.laufzeit_tage != null) teile.push('Läuft seit ' + status.laufzeit_tage + ' Tagen');
+    if (status.notiz) teile.push(status.notiz);
+  } else {
+    teile.push('Noch keine Prüfung durchgeführt (läuft nachts um 4 Uhr).');
+  }
+  sysupdStatusEl.textContent = teile.join(' · ');
+}
+
+async function ladeSystemupdate() {
+  try {
+    const res = await fetch('/api/systemupdate');
+    const data = await res.json();
+    sysupdAutoNeustartCb.checked = !!data.einstellungen.auto_neustart;
+    sysupdIntervallSel.value = String(data.einstellungen.intervall_wochen);
+    renderSysupdStatus(data.status);
+  } catch {
+    // Selten genutztes Feld - kein Fehler-Toast beim Laden der Seite.
+  }
+}
+
+async function speichereSystemupdate() {
+  sysupdSpeichernBtn.disabled = true;
+  try {
+    const res = await fetch('/api/systemupdate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        auto_neustart: sysupdAutoNeustartCb.checked,
+        intervall_wochen: parseInt(sysupdIntervallSel.value, 10),
+      }),
+    });
+    toast(res.ok ? 'Gespeichert' : 'Fehler beim Speichern');
+  } catch {
+    toast('Fehler beim Speichern');
+  } finally {
+    sysupdSpeichernBtn.disabled = false;
+  }
+}
+
 async function ladeSpeicherEinstellungen() {
   try {
     const res = await fetch('/api/speicher');
@@ -2068,6 +2123,7 @@ btnNeustart.addEventListener('click', neustart);
 btnHerunterfahren.addEventListener('click', herunterfahren);
 btnDiensteNeustart.addEventListener('click', diensteNeustart);
 tuerKontaktSpeichernBtn.addEventListener('click', speichereTuerEinstellungen);
+sysupdSpeichernBtn.addEventListener('click', speichereSystemupdate);
 btnTuerSimulieren.addEventListener('click', tuerSimulieren);
 btnPushoverStumm.addEventListener('click', () => stummKlick('messenger', btnPushoverStumm));
 btnFotosPause.addEventListener('click', () => stummKlick('fotos', btnFotosPause));
@@ -2118,6 +2174,7 @@ ladePushoverEinstellungen();
 ladeTelegramEinstellungen();
 ladeSimulationDauer();
 ladeTuerEinstellungen();
+ladeSystemupdate();
 ladeSpeicherEinstellungen();
 ladeGalerieAnzeigeModus();
 ladeExternLink();

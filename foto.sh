@@ -1,7 +1,20 @@
 #!/bin/bash
-mkdir -p /opt/honigbox/fotos/Bilder/
-chmod 777 /opt/honigbox/fotos/Bilder/ 2>/dev/null
-cd /opt/honigbox/fotos/Bilder/
+# Zielordner: normalerweise Bilder/. Im "Platte"-Speichermodus ist Bilder/ ein
+# verschluesselter Container, der nach jedem Neustart gesperrt bleibt, bis der
+# Nutzer den Schluessel eingibt. Solange landen Fotos im RAM-Notfallordner
+# (/run ist tmpfs, also nie unverschluesselt auf der SD-Karte) und werden von
+# archiv_entschluesseln.sh nach dem Entsperren nach Bilder/ verschoben.
+ZIEL_DIR="/opt/honigbox/fotos/Bilder"
+NOTFALL=0
+if grep -qE '"speicherort": ?"platte"' /opt/honigbox/einstellungen/.speicher-einstellungen.json 2>/dev/null; then
+  case "$(cat /run/honigbox/bilder-status 2>/dev/null)" in
+    unlocked|fresh) ;;
+    *) ZIEL_DIR="/run/honigbox/notfall-fotos"; NOTFALL=1 ;;
+  esac
+fi
+mkdir -p "$ZIEL_DIR/"
+chmod 777 "$ZIEL_DIR/" 2>/dev/null
+cd "$ZIEL_DIR/"
 
 # rpicam-still (Bookworm) statt libcamera-still (aeltere Versionen), je nachdem was vorhanden ist
 if command -v rpicam-still >/dev/null 2>&1; then
@@ -88,6 +101,12 @@ fi
 # (z.B. /api/foto/einzel) einen Fehlschlag erkennen statt "aufgenommen" zu melden.
 timeout -k 5 20 "$KAMERA_BEFEHL" "${KAMERA_ARGS[@]}" >/dev/null 2>&1
 RC=$?
+
+# Notfallordner im RAM begrenzen: nur die 60 neuesten Fotos behalten (aelteste
+# zuerst weg), damit er den Arbeitsspeicher nie fuellt.
+if [ "$NOTFALL" = "1" ]; then
+  ls -1t -- *.jpg *.jpeg *.png 2>/dev/null | tail -n +61 | xargs -r rm -f --
+fi
 
 cd /opt/honigbox/
 exit $RC

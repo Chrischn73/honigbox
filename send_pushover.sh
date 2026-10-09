@@ -58,9 +58,14 @@ if [ -z "$TEXT" ]; then
     eskalation1) TEXT="HONIGBOX Tür steht seit ca. 4 Minuten offen! Warte weitere 30 Min bis zur nächsten Prüfung..." ;;
     eskalation2) TEXT="HONIGBOX Tür steht seit ca. 34 Minuten offen!" ;;
     geschlossen) TEXT="HonigBox wurde geschlossen!!" ;;
+    systemneustart) TEXT="HonigBox startet wegen Systemupdates neu. Danach bitte den Archiv-Schlüssel eingeben, sonst bleibt das Foto-Archiv gesperrt." ;;
+    systemneustart_abgebrochen) TEXT="HonigBox: Der automatische Neustart nach Systemupdates wurde übersprungen." ;;
+    archiv_gesperrt) TEXT="HonigBox: Das Foto-Archiv ist noch gesperrt. Bitte die Galerie öffnen und den Archiv-Schlüssel eingeben." ;;
   esac
 fi
 [ -z "$TEXT" ] && exit 0
+# Optionaler 2. Parameter: dynamischer Zusatz (z.B. Grund, Foto-Anzahl) - wird an den Text gehaengt.
+[ -n "$2" ] && TEXT="$TEXT $2"
 
 # --retry: falls Netzwerk/DNS kurz nach dem Booten noch nicht bereit ist,
 # nicht sofort aufgeben, sondern bis zu 5x mit steigender Pause erneut versuchen

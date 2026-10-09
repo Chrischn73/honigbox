@@ -114,16 +114,24 @@ def foto_speicher_nicht_bereit():
     return status not in ("unlocked", "fresh")
 
 
+NOTFALL_FOTOS_DIR = "/run/honigbox/notfall-fotos"
+
+
+def foto_zielordner():
+    """Wohin foto.sh gerade schreibt: BILDER_DIR, oder - im Platte-Modus bei
+    noch gesperrtem Container - der RAM-Notfallordner (gleiche Regel wie in
+    foto.sh)."""
+    return NOTFALL_FOTOS_DIR if foto_speicher_nicht_bereit() else BILDER_DIR
+
+
 def fotos_pausiert():
-    """True, solange 'Fotos aus' oder 'Messenger + Fotos aus' aktiv ist, ODER
-    solange im Platte-Speichermodus der verschluesselte Bilder-Container noch
-    nicht bereit ist (siehe foto_speicher_nicht_bereit()) - unterdrueckt dann
-    sowohl das Sofortfoto (sofortfoto_start()) als auch die Fotos waehrend
-    warte_waehrend_offen(). Die Messenger-Stummschaltung selbst ist
-    unabhaengig davon (eigene Datei, von send_pushover.sh/send_telegram.sh
-    geprueft)."""
-    if foto_speicher_nicht_bereit():
-        return True
+    """True, solange 'Fotos aus' oder 'Messenger + Fotos aus' aktiv ist -
+    unterdrueckt dann sowohl das Sofortfoto (sofortfoto_start()) als auch die
+    Fotos waehrend warte_waehrend_offen(). Ein noch gesperrter Bilder-Container
+    (Platte-Modus) pausiert NICHT mehr: foto.sh schreibt dann in den
+    RAM-Notfallordner (siehe foto_zielordner()). Die Messenger-Stummschaltung
+    selbst ist unabhaengig davon (eigene Datei, von send_pushover.sh/
+    send_telegram.sh geprueft)."""
     try:
         with open(FOTOS_PAUSE_PATH) as f:
             bis = json.load(f).get("bis", 0)
@@ -321,14 +329,15 @@ def dunkle_fotos_aufraeumen(sitzung_start):
         from PIL import Image, ImageStat
     except ImportError:
         return
+    zielordner = foto_zielordner()
     try:
-        dateinamen = os.listdir(BILDER_DIR)
+        dateinamen = os.listdir(zielordner)
     except OSError:
         return
     for name in dateinamen:
         if not name.lower().endswith((".jpg", ".jpeg")):
             continue
-        pfad = os.path.join(BILDER_DIR, name)
+        pfad = os.path.join(zielordner, name)
         try:
             # 2 Sek. Puffer: manche Dateisysteme runden Zeitstempel auf ganze
             # Sekunden, sonst koennte ein Foto kurz nach sitzung_start faelschlich
@@ -459,7 +468,16 @@ def sofortfoto_start():
 
 
 time.sleep(5)  # 3 Sek. urspruengliche Startverzoegerung + 2 Sek. wie zuvor in push-boot.sh
-push("boot")
+# Stiller Dienst-Neustart (systemneustart.py nach Paket-Updates): kein Pi-Neustart,
+# also auch keine "Raspi wurde gestartet"-Meldung - Marker einmalig verbrauchen.
+STILLER_NEUSTART_MARKER = os.path.join(EINSTELLUNGEN_DIR, ".stiller-dienstneustart")
+if os.path.exists(STILLER_NEUSTART_MARKER):
+    try:
+        os.remove(STILLER_NEUSTART_MARKER)
+    except OSError:
+        pass
+else:
+    push("boot")
 
 while True:
     if door_is_open():

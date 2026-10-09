@@ -633,6 +633,13 @@ TUER_NEUSTART_SIGNAL_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-neustart-sign
 TUER_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".tuer-einstellungen.json")
 TUER_EINSTELLUNGEN_STANDARD = {"kontakt_invertiert": False}
 
+# Von systemneustart.py (root, taeglicher Timer) gelesen bzw. geschrieben - die
+# Pfade muessen dort identisch sein. Siehe "Systemupdates" in den Einstellungen.
+SYSTEMUPDATE_EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".systemupdate-einstellungen.json")
+SYSTEMUPDATE_STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".systemupdate-status.json")
+SYSTEMUPDATE_STANDARD = {"auto_neustart": True, "intervall_wochen": 4}
+SYSTEMUPDATE_INTERVALLE = (4, 8, 12)
+
 GALERIE_ANZEIGE_PATH = os.path.join(EINSTELLUNGEN_DIR, ".galerie-anzeige.json")
 GALERIE_ANZEIGE_MODI = ("einzelbild", "feed")
 GALERIE_ANZEIGE_STANDARD = {"modus": "feed"}
@@ -693,6 +700,9 @@ PUSHOVER_MELDUNGEN_SCHEMA = [
     {"id": "eskalation1", "label": "Tür seit ca. 4 Minuten offen"},
     {"id": "eskalation2", "label": "Tür seit ca. 34 Minuten offen"},
     {"id": "geschlossen", "label": "Tür wurde wieder geschlossen"},
+    {"id": "systemneustart", "label": "Automatischer Neustart nach Systemupdate"},
+    {"id": "systemneustart_abgebrochen", "label": "Automatischer Neustart übersprungen"},
+    {"id": "archiv_gesperrt", "label": "Foto-Archiv nach Neustart noch gesperrt"},
 ]
 PUSHOVER_STANDARD = {
     "token": "", "user": "", "aktiv": False,
@@ -703,6 +713,12 @@ PUSHOVER_STANDARD = {
             "HONIGBOX Tür steht seit ca. 4 Minuten offen! Warte weitere 30 Min bis zur nächsten Prüfung..."},
         "eskalation2": {"aktiv": True, "text": "HONIGBOX Tür steht seit ca. 34 Minuten offen!"},
         "geschlossen": {"aktiv": True, "text": "HonigBox wurde geschlossen!!"},
+        "systemneustart": {"aktiv": True, "text":
+            "HonigBox startet wegen Systemupdates neu. Danach bitte den Archiv-Schlüssel eingeben, sonst bleibt das Foto-Archiv gesperrt."},
+        "systemneustart_abgebrochen": {"aktiv": True, "text":
+            "HonigBox: Der automatische Neustart nach Systemupdates wurde übersprungen."},
+        "archiv_gesperrt": {"aktiv": True, "text":
+            "HonigBox: Das Foto-Archiv ist noch gesperrt. Bitte die Galerie öffnen und den Archiv-Schlüssel eingeben."},
     },
 }
 
@@ -1650,6 +1666,37 @@ def speichere_tuer_einstellungen(kontakt_invertiert):
     return werte
 
 
+def lade_systemupdate_einstellungen():
+    werte = _lade_einstellungen_datei(SYSTEMUPDATE_EINSTELLUNGEN_PATH, SYSTEMUPDATE_STANDARD)
+    try:
+        wochen = int(werte.get("intervall_wochen", 4))
+    except (TypeError, ValueError):
+        wochen = 4
+    return {
+        "auto_neustart": bool(werte.get("auto_neustart", True)),
+        "intervall_wochen": wochen if wochen in SYSTEMUPDATE_INTERVALLE else 4,
+    }
+
+
+def speichere_systemupdate_einstellungen(auto_neustart, intervall_wochen):
+    try:
+        wochen = int(intervall_wochen)
+    except (TypeError, ValueError):
+        wochen = SYSTEMUPDATE_STANDARD["intervall_wochen"]
+    if wochen not in SYSTEMUPDATE_INTERVALLE:
+        wochen = SYSTEMUPDATE_STANDARD["intervall_wochen"]
+    werte = {"auto_neustart": bool(auto_neustart), "intervall_wochen": wochen}
+    with open(SYSTEMUPDATE_EINSTELLUNGEN_PATH, "w") as f:
+        json.dump(werte, f)
+    return werte
+
+
+def lade_systemupdate_status():
+    """Letztes Ergebnis des naechtlichen Systemchecks (systemneustart.py) -
+    leeres Dict, solange der Timer noch nie gelaufen ist."""
+    return _lade_einstellungen_datei(SYSTEMUPDATE_STATUS_PATH, {})
+
+
 def lade_galerie_anzeige():
     return _lade_einstellungen_datei(GALERIE_ANZEIGE_PATH, GALERIE_ANZEIGE_STANDARD)
 
@@ -2307,6 +2354,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"dauer_sekunden": lade_simulation_dauer(), "max_sekunden": SIMULATION_DAUER_MAX_SEK})
         if path == "/api/tuer-einstellungen":
             return self._json(lade_tuer_einstellungen())
+        if path == "/api/systemupdate":
+            return self._json({"einstellungen": lade_systemupdate_einstellungen(),
+                               "status": lade_systemupdate_status()})
         if path == "/api/galerie-anzeige":
             return self._json(lade_galerie_anzeige())
         if path == "/api/extern-link":
@@ -2426,6 +2476,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/tuer-einstellungen":
             body = self._rjson()
             werte = speichere_tuer_einstellungen(body.get("kontakt_invertiert", False))
+            return self._json({"ok": True, **werte})
+
+        if path == "/api/systemupdate":
+            body = self._rjson()
+            werte = speichere_systemupdate_einstellungen(
+                body.get("auto_neustart", True), body.get("intervall_wochen", 4))
             return self._json({"ok": True, **werte})
 
         if path == "/api/galerie-anzeige":

@@ -215,6 +215,16 @@ if [ -f "$SPEICHER_EINSTELLUNGEN_DATEI" ]; then
 fi
 if [ "$SPEICHERORT" = "platte" ]; then
     container_oeffnen_oder_neu bilder "$FOTOS_DIR/bilder.img" "$FOTOS_DIR/Bilder"
+    # Fotos, die waehrend der Sperre im RAM-Notfallordner gelandet sind (siehe
+    # foto.sh), jetzt in den entschluesselten Bilder-Container uebernehmen.
+    notfall="$RUN_DIR/notfall-fotos"
+    if [ -d "$notfall" ] && [ "$(cat "$RUN_DIR/bilder-status" 2>/dev/null)" != "locked" ]; then
+        for foto in "$notfall"/*; do
+            [ -f "$foto" ] && mv -n "$foto" "$FOTOS_DIR/Bilder/" && \
+                chmod 666 "$FOTOS_DIR/Bilder/$(basename "$foto")" 2>/dev/null
+        done
+        log "bilder: Notfall-Fotos aus dem RAM in den Bilder-Container uebernommen."
+    fi
 else
     log "bilder: Speichermodus ist 'ram' - kein Container-Handling beim Boot noetig."
 fi

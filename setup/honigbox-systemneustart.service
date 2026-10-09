@@ -1,0 +1,7 @@
+[Unit]
+Description=HonigBox – Systemupdate-Check und kontrollierter Neustart (Python, siehe systemneustart.py)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/honigbox/systemneustart.py

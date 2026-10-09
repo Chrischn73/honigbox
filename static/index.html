@@ -234,6 +234,28 @@
         </div>
       </details>
 
+      <details class="kamera-details">
+        <summary>🛡️ Systemupdates</summary>
+        <p class="muted" style="font-size:.85rem; margin:.2rem 0 .8rem;">Die HonigBox installiert Sicherheitsupdates für das Betriebssystem
+        automatisch (ca. wöchentlich). Damit sie vollständig wirken, ist gelegentlich ein Neustart nötig – das übernimmt die Box nachts um 4 Uhr
+        selbst, aber nur bei Bedarf, nie während einer Aufnahme und frühestens nach dem eingestellten Abstand.</p>
+        <div class="kamera-feld checkbox-feld">
+          <label for="sysupd-auto-neustart">Automatischer Neustart nach Systemupdates</label>
+          <input type="checkbox" id="sysupd-auto-neustart" checked>
+        </div>
+        <div class="kamera-feld">
+          <label for="sysupd-intervall">Frühestens alle</label>
+          <select id="sysupd-intervall">
+            <option value="4">4 Wochen</option>
+            <option value="8">8 Wochen</option>
+            <option value="12">12 Wochen</option>
+          </select>
+        </div>
+        <p class="warnhinweis">⚠️ Nach einem Neustart ist das Foto-Archiv gesperrt, bis der Archiv-Schlüssel eingegeben wird. Fotos im RAM-Speicher werden vorher automatisch ins Archiv verschoben (ist das nicht möglich, wird nicht neu gestartet). Du bekommst dazu eine Nachricht per Pushover/Telegram.</p>
+        <p class="muted" id="sysupd-status" style="font-size:.8rem; margin:.2rem 0 .8rem;"></p>
+        <button class="btn btn-sm btn-ghost" id="sysupd-speichern" style="margin-bottom:1.2rem;">Speichern</button>
+      </details>
+
       <details class="kamera-details system-details">
         <summary>⚡ System</summary>
         <p class="warnhinweis" id="ram-neustart-warnung" hidden>⚠️ Fotos liegen aktuell im RAM-Speicher (Einstellung unter „📷 Fotos“ → „Speicherort“) – bei Neustart/Herunterfahren gehen alle noch nicht archivierten Fotos dabei verloren.</p>

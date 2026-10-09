@@ -50,7 +50,7 @@ log() { echo; echo "==> $*"; }
 # ---------------------------------------------------------------------------
 log "Pruefe benoetigte Dateien in $PROJECT_DIR"
 for f in honigbox.sh foto.sh send_pushover.sh send_telegram.sh galerie_server.py speicher_umschalten.sh \
-         archiv_entschluesseln.sh static honigbox.service honigbox-galerie.service; do
+         archiv_entschluesseln.sh systemneustart.py static honigbox.service honigbox-galerie.service; do
     if [ ! -e "$PROJECT_DIR/$f" ]; then
         echo "FEHLER: $PROJECT_DIR/$f fehlt. Wurde der komplette Projekt-Ordner uebertragen?"
         exit 1
@@ -58,6 +58,7 @@ for f in honigbox.sh foto.sh send_pushover.sh send_telegram.sh galerie_server.py
 done
 for f in honigbox-backup.sh honigbox-backup-rotate.py honigbox-backup-fingerprint.py honigbox-backup.service honigbox-backup.timer \
          honigbox-update-check.service honigbox-update-check.timer \
+         honigbox-systemneustart.service honigbox-systemneustart.timer \
          honigbox-archiv-entschluesseln.service honigbox-archiv-tmpfiles.conf; do
     if [ ! -e "$SETUP_DIR/$f" ]; then
         echo "FEHLER: $SETUP_DIR/$f fehlt."
@@ -111,6 +112,32 @@ apt-get install -y python3-pil || \
 # das sonst auf einem Raspberry Pi spuerbar haengen).
 apt-get install -y cryptsetup-bin haveged
 systemctl enable --now haveged
+
+# Automatische Sicherheitsupdates (nur Debian-Security, ca. woechentlich). Der
+# normale Nutzer greift nie selbst per apt ein - ohne das bliebe die Box bis
+# zum naechsten HonigBox-Release auf dem Stand von heute. Bewusst NICHT das
+# Raspberry-Pi-Repo (Kernel/Firmware/Kamera-Stack): das wird weiterhin nur
+# per Release-Update oben mitgezogen.
+apt-get install -y unattended-upgrades || \
+    echo "WARNUNG: Konnte unattended-upgrades nicht installieren - es gibt dann keine automatischen Sicherheitsupdates."
+cat > /etc/apt/apt.conf.d/52honigbox-unattended-upgrades << 'UUEOF'
+// Angelegt von HonigBox setup/install.sh. Rueckbau: Datei loeschen.
+Unattended-Upgrade::Origins-Pattern {
+        "origin=Debian,codename=${distro_codename},label=Debian-Security";
+        "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+};
+// Eigene Config-Dateien nie ueberschreiben/nachfragen - sonst haengt das Update.
+Dpkg::Options { "--force-confdef"; "--force-confold"; };
+// Neustart macht NICHT apt, sondern honigbox-systemneustart (kontrolliert, nachts).
+Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+UUEOF
+cat > /etc/apt/apt.conf.d/20auto-upgrades << 'AUEOF'
+// Angelegt von HonigBox setup/install.sh: Paketlisten + Sicherheitsupdates woechentlich.
+APT::Periodic::Update-Package-Lists "7";
+APT::Periodic::Unattended-Upgrade "7";
+APT::Periodic::AutocleanInterval "7";
+AUEOF
 
 # ---------------------------------------------------------------------------
 log "SSH aktivieren"
@@ -176,13 +203,14 @@ sicher_kopieren "$PROJECT_DIR/send_telegram.sh" /opt/honigbox/send_telegram.sh
 sicher_kopieren "$PROJECT_DIR/galerie_server.py" /opt/honigbox/galerie_server.py
 sicher_kopieren "$PROJECT_DIR/speicher_umschalten.sh" /opt/honigbox/speicher_umschalten.sh
 sicher_kopieren "$PROJECT_DIR/archiv_entschluesseln.sh" /opt/honigbox/archiv_entschluesseln.sh
+sicher_kopieren "$PROJECT_DIR/systemneustart.py" /opt/honigbox/systemneustart.py
 sicher_kopiere_ordner "$PROJECT_DIR/static" /opt/honigbox/static
 
 # Wichtig: die Shell-Scripte brauchen das Ausfuehrungsrecht, sonst bricht
 # honigbox.sh beim Aufruf mit "Permission denied" ab (ist uns schon einmal
 # so passiert).
 chmod +x /opt/honigbox/honigbox.sh /opt/honigbox/foto.sh /opt/honigbox/send_pushover.sh \
-    /opt/honigbox/send_telegram.sh /opt/honigbox/speicher_umschalten.sh /opt/honigbox/archiv_entschluesseln.sh
+    /opt/honigbox/send_telegram.sh /opt/honigbox/speicher_umschalten.sh /opt/honigbox/archiv_entschluesseln.sh /opt/honigbox/systemneustart.py
 
 # Pushover-Zugangsdaten nur beim allerersten Einrichten anlegen, damit ein
 # spaeter ueber die Web-UI gespeicherter echter Token bei einem erneuten
@@ -265,6 +293,8 @@ cp "$SETUP_DIR/honigbox-backup.service" /etc/systemd/system/honigbox-backup.serv
 cp "$SETUP_DIR/honigbox-backup.timer" /etc/systemd/system/honigbox-backup.timer
 cp "$SETUP_DIR/honigbox-update-check.service" /etc/systemd/system/honigbox-update-check.service
 cp "$SETUP_DIR/honigbox-update-check.timer" /etc/systemd/system/honigbox-update-check.timer
+cp "$SETUP_DIR/honigbox-systemneustart.service" /etc/systemd/system/honigbox-systemneustart.service
+cp "$SETUP_DIR/honigbox-systemneustart.timer" /etc/systemd/system/honigbox-systemneustart.timer
 
 # ---------------------------------------------------------------------------
 log "Systemprotokoll (journald) nur im RAM halten - schont die SD-Karte"
@@ -384,9 +414,12 @@ cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
       {"src": "galerie_server.py", "dest": "/opt/honigbox/galerie_server.py", "mode": "0644", "chown": "www-data:www-data"},
       {"src": "speicher_umschalten.sh", "dest": "/opt/honigbox/speicher_umschalten.sh", "mode": "0755"},
       {"src": "archiv_entschluesseln.sh", "dest": "/opt/honigbox/archiv_entschluesseln.sh", "mode": "0755"},
+      {"src": "systemneustart.py", "dest": "/opt/honigbox/systemneustart.py", "mode": "0755"},
       {"src": "static", "dest": "/opt/honigbox/static", "mode": "dir", "chown": "www-data:www-data"},
       {"src": "honigbox.service", "dest": "/etc/systemd/system/honigbox.service", "mode": "0644"},
       {"src": "honigbox-galerie.service", "dest": "/etc/systemd/system/honigbox-galerie.service", "mode": "0644"},
+      {"src": "setup/honigbox-systemneustart.service", "dest": "/etc/systemd/system/honigbox-systemneustart.service", "mode": "0644"},
+      {"src": "setup/honigbox-systemneustart.timer", "dest": "/etc/systemd/system/honigbox-systemneustart.timer", "mode": "0644"},
       {"src": "setup/honigbox-archiv-entschluesseln.service", "dest": "/etc/systemd/system/honigbox-archiv-entschluesseln.service", "mode": "0644"},
       {"src": "setup/honigbox-archiv-tmpfiles.conf", "dest": "/etc/tmpfiles.d/honigbox-archiv.conf", "mode": "0644"}
     ],
@@ -461,6 +494,7 @@ systemctl restart honigbox-galerie.service
 # taegliche Selbst-Update-Timer des Portals.
 systemctl enable --now honigbox-backup.timer
 systemctl enable --now honigbox-update-check.timer
+systemctl enable --now honigbox-systemneustart.timer
 systemctl start honigbox-update-check.service || true
 
 is_wifi_connected() {

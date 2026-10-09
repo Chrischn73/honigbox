@@ -1,0 +1,11 @@
+[Unit]
+Description=HonigBox – Systemupdate-Check (taeglich 04:00 und 10 Min. nach dem Boot)
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+OnBootSec=10min
+RandomizedDelaySec=120
+Persistent=false
+
+[Install]
+WantedBy=timers.target
