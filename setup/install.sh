@@ -402,6 +402,7 @@ cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
     "restore_start_services": ["honigbox.service", "honigbox-galerie.service"],
     "restored_label": "Einstellungen"
   },
+  "busy_check": {"json_file": "/run/honigbox/tuer-status.json", "key": "tuer_offen"},
   "update": {
     "github_repo": "Chrischn73/honigbox",
     "version_file": "/opt/honigbox/static/app.js",
