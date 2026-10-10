@@ -86,7 +86,11 @@ export DEBIAN_FRONTEND=noninteractive
 # statt sofort mit "Could not get lock" abzubrechen (set -e!): auf der Box
 # laeuft taeglich apt-daily-upgrade (unattended-upgrades) und kann die Sperre
 # gerade halten, wenn die nachtliche Auto-Reparatur dieses Skript startet.
-apt-get() { command apt-get -o DPkg::Lock::Timeout=600 "$@"; }
+# confdef/confold: Hat der Betreiber eine Konfigurationsdatei angepasst, fuer
+# die ein Paket eine neue Fassung mitbringt, behaelt dpkg die vorhandene, statt
+# nachzufragen. Ohne Terminal (Lauf aus dem Setup-Portal) wuerde die Frage mit
+# "EOF on stdin at conffile prompt" scheitern und set -e den Lauf abbrechen.
+apt-get() { command apt-get -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$@"; }
 
 apt_tries=0
 until apt-get update; do
@@ -150,8 +154,13 @@ APT::Periodic::AutocleanInterval "7";
 AUEOF
 
 # ---------------------------------------------------------------------------
-log "SSH aktivieren"
-systemctl enable --now ssh
+# Nur auf dem Pi: Auf einem Linux-Server entscheidet der Betreiber selbst ueber
+# SSH (evtl. bewusst aus, evtl. gar nicht installiert - dann brach dieser
+# Befehl wegen set -e die ganze Installation ab).
+if [ "$IS_PI" -eq 1 ]; then
+    log "SSH aktivieren"
+    systemctl enable --now ssh || echo "WARNUNG: SSH konnte nicht aktiviert werden."
+fi
 
 if [ "$IS_PI" -eq 1 ]; then
     # -----------------------------------------------------------------------
@@ -376,10 +385,11 @@ GALERIE_PORT=8090
 if [ -n "$PORT8090_PID" ] && [ "$PORT8090_PID" != "$GALERIE_APP_PID" ]; then
     GALERIE_PORT=8091
     echo "Port 8090 ist von einem anderen Prozess belegt (PID $PORT8090_PID) - Galerie laeuft stattdessen auf Port $GALERIE_PORT."
-    sed -i "s/^Environment=GALERIE_PORT=.*/Environment=GALERIE_PORT=$GALERIE_PORT/" /etc/systemd/system/honigbox-galerie.service
-    # Eigene Datei nur fuer das Setup-Portal, damit es den tatsaechlichen
-    # Port kennt, ohne honigbox-galerie.service selbst anfassen zu muessen.
-    echo "HONIGBOX_GALERIE_PORT=$GALERIE_PORT" > /etc/default/honigbox-galerie
+    # Eine Datei fuer beide: honigbox-galerie.service liest GALERIE_PORT per
+    # EnvironmentFile, das Setup-Portal HONIGBOX_GALERIE_PORT fuer den
+    # Oeffnen-Link. Die Unit selbst bleibt unveraendert - ein Update ueber das
+    # Portal kopiert sie neu und hat den Port per sed frueher zurueckgesetzt.
+    printf 'GALERIE_PORT=%s\nHONIGBOX_GALERIE_PORT=%s\n' "$GALERIE_PORT" "$GALERIE_PORT" > /etc/default/honigbox-galerie
 else
     echo "Port 8090 ist frei (oder bereits durch die Galerie selbst belegt)."
     rm -f /etc/default/honigbox-galerie
@@ -402,6 +412,7 @@ cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
   "app_port_default": 8090,
   "app_port_env_file": "/etc/default/honigbox-galerie",
   "app_port_env_var": "HONIGBOX_GALERIE_PORT",
+  "reboot_warnung": "HonigBox: Im RAM-Speichermodus gehen nicht archivierte Fotos beim Neustart verloren.",
   "backup": {
     "script": "/opt/backup-scripts/honigbox-backup.sh",
     "prefix": "honigbox-backup",
@@ -514,7 +525,10 @@ systemctl enable --now honigbox-systemneustart.timer
 # Vor dem Update-Check-Start, damit der den Lauf nicht ein zweites Mal anstoesst.
 mkdir -p /opt/setup-portal/state/honigbox
 sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1 > /opt/setup-portal/state/honigbox/install_sh.sha256
-systemctl start honigbox-update-check.service || true
+# --no-block: Ist ein Update faellig, wartet der Check bis zu 15 Min. auf die
+# Update-Sperre - die haelt das Portal aber, solange es dieses install.sh
+# ausfuehrt. Blockierend hiess das: 15 Min. Stillstand am Ende des Laufs.
+systemctl start --no-block honigbox-update-check.service || true
 
 is_wifi_connected() {
     nmcli -t -f DEVICE,STATE device status 2>/dev/null \
@@ -642,7 +656,10 @@ EOF
         # angestossen werden - das wuerde ein bereits entschluesseltes
         # Archiv grundlos wieder in den Warte-auf-Schluessel-Zustand
         # zuruecksetzen.
-        systemctl start honigbox-archiv-entschluesseln.service
+        # --no-block: Wartet der Dienst nach einem Neustart noch auf den Archiv-
+        # Schluessel ("activating"), haengte sich ein normales "start" an diesen Job
+        # und blockierte install.sh bis zur Schluesseleingabe (Portal-Timeout 30 Min.).
+        systemctl start --no-block honigbox-archiv-entschluesseln.service
     fi
 else
     if [ -n "$IP_ANZEIGE" ]; then
@@ -656,5 +673,8 @@ else
     echo " HonigBox:          $HONIGBOX_URL"
     echo "======================================================================"
     echo " Fertig - kein Neustart erforderlich."
-    systemctl start honigbox-archiv-entschluesseln.service
+    # --no-block: Wartet der Dienst nach einem Neustart noch auf den Archiv-
+    # Schluessel ("activating"), haengte sich ein normales "start" an diesen Job
+    # und blockierte install.sh bis zur Schluesseleingabe (Portal-Timeout 30 Min.).
+    systemctl start --no-block honigbox-archiv-entschluesseln.service
 fi

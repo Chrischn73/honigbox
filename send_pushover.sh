@@ -69,7 +69,10 @@ fi
 
 # --retry: falls Netzwerk/DNS kurz nach dem Booten noch nicht bereit ist,
 # nicht sofort aufgeben, sondern bis zu 5x mit steigender Pause erneut versuchen
+# --connect-timeout/--max-time/--retry-max-time: eine haengende Verbindung
+# darf den Versand nicht beliebig lange aufhalten (hoechstens ~1 Minute).
 curl -s --retry 5 --retry-delay 3 --retry-all-errors \
+  --connect-timeout 10 --max-time 20 --retry-max-time 60 \
   --form-string "token=$PUSHOVER_TOKEN" \
   --form-string "user=$PUSHOVER_USER" \
   --form-string "message=$TEXT" \

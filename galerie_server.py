@@ -24,7 +24,10 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse
 BASE       = os.path.dirname(os.path.abspath(__file__))
 FOTO_SCRIPT = os.environ.get("GALERIE_FOTO_SCRIPT", os.path.join(BASE, "foto.sh"))
 HOST       = os.environ.get("GALERIE_HOST", "0.0.0.0")
-PORT       = int(os.environ.get("GALERIE_PORT", "8090"))
+# HONIGBOX_GALERIE_PORT kommt per EnvironmentFile aus /etc/default/honigbox-
+# galerie (Ausweich-Port 8091, siehe install.sh) und hat Vorrang - so wirkt
+# auch eine aeltere Datei, die nur diese Variable enthaelt.
+PORT       = int(os.environ.get("HONIGBOX_GALERIE_PORT") or os.environ.get("GALERIE_PORT", "8090"))
 STATIC_DIR = os.environ.get("GALERIE_STATIC", os.path.join(BASE, "static"))
 BILDER_DIR = os.environ.get("GALERIE_BILDER", "/opt/honigbox/fotos/Bilder")
 ARCHIV_DIR = os.environ.get("GALERIE_ARCHIV", "/opt/honigbox/fotos/Archiv")
@@ -163,8 +166,27 @@ def _sekunden_seit_geraete_start():
         return time.time() - _ZUGANG_PROZESS_START
 
 
+# Automatische bzw. ohne Login ausloesbare Neustarts (systemneustart.py um
+# 05:00, "Neu starten" im Setup-Portal) hinterlegen hier vorher eine
+# Markierung "reboot". Ein so ausgeloester Geraete-Start oeffnet das
+# Reset-Fenster NICHT - sonst koennte jeder im WLAN den planbaren Auto-
+# Neustart abpassen bzw. ueber das Portal selbst einen ausloesen und ein
+# neues Passwort setzen. Von Hand (Strom, SSH) bleibt der Reset moeglich.
+AUTO_NEUSTART_DIR = os.environ.get("AUTO_NEUSTART_DIR", "/var/lib/beetown-auto-neustart")
+
+
+def _automatischer_geraete_start():
+    try:
+        markiert = os.path.getmtime(os.path.join(AUTO_NEUSTART_DIR, "reboot"))
+    except OSError:
+        return False
+    boot = time.time() - _sekunden_seit_geraete_start()
+    return markiert >= boot - 3600
+
+
 def zugang_reset_moeglich():
-    return zugang_eingerichtet() and _sekunden_seit_geraete_start() < ZUGANG_RESET_FENSTER_SEKUNDEN
+    return (zugang_eingerichtet() and _sekunden_seit_geraete_start() < ZUGANG_RESET_FENSTER_SEKUNDEN
+            and not _automatischer_geraete_start())
 
 
 _ZUGANG_SEITE_TEMPLATE = """<!DOCTYPE html>
@@ -222,9 +244,10 @@ def _seite_login(fehler=None):
                      '<a href="/zuruecksetzen">Jetzt zurücksetzen</a> '
                      '(löscht dabei ALLE Fotos).</p>')
     else:
-        formular += ('<p class="muted zugang-hinweis">Passwort vergessen? Gerät neu starten - '
-                     'direkt danach erscheint hier für 10 Minuten ein Link zum Zurücksetzen '
-                     '(löscht dabei ALLE Fotos, aktuelle wie Archiv).</p>')
+        formular += ('<p class="muted zugang-hinweis">Passwort vergessen? Gerät von Hand neu starten '
+                     '(Strom kurz trennen) - direkt danach erscheint hier für 10 Minuten ein Link zum '
+                     'Zurücksetzen (löscht dabei ALLE Fotos, aktuelle wie Archiv). Nach automatischen '
+                     'Neustarts erscheint der Link bewusst nicht.</p>')
     return _zugang_seite("Bitte Passwort eingeben.", formular, fehler)
 
 
@@ -246,6 +269,7 @@ _ARCHIV_CONTAINER_LABEL = {"archiv": "Foto-Archiv", "bilder": "Aktuelle Fotos (P
 
 def _seite_archiv_schluessel(fehler=None):
     zustand = _archiv_schluessel_status()
+    _archiv_schluessel_anzeige_merken(zustand)
     hinweise = []
     wartet = False
     verarbeitung_namen = []
@@ -828,10 +852,12 @@ def _lese_datei_falls_vorhanden(pfad):
         return None
 
 
-# Wie lange der frisch erzeugte Klartext-Schluessel nach dem Anlegen eines
-# neuen Containers noch abrufbar bleibt, falls der Nutzer nicht aktiv
-# bestaetigt, ihn gesichert zu haben - danach automatisch geloescht (siehe
-# _archiv_schluessel_status()). Bewusst kein Dauerzugriff: der Schluessel
+# Wie lange der frisch erzeugte Klartext-Schluessel nach seiner ERSTEN
+# ANZEIGE noch abrufbar bleibt, falls der Nutzer nicht aktiv bestaetigt, ihn
+# gesichert zu haben - danach automatisch geloescht (siehe
+# _archiv_schluessel_status()). Gezaehlt ab der Anzeige, nicht ab dem Anlegen:
+# Bei der Erstinstallation entsteht der Container schon beim Boot, und wer
+# erst 20 Minuten WLAN einrichtet, haette den Schluessel sonst nie gesehen. Bewusst kein Dauerzugriff: der Schluessel
 # soll nur EINMALIG beim Erzeugen abrufbar sein, nicht dauerhaft ueber die
 # Laufzeit hinweg.
 ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK = 10 * 60
@@ -863,15 +889,35 @@ def _archiv_schluessel_status():
         status = _lese_datei_falls_vorhanden(status_pfad)
         schluessel = None
         if status == "fresh":
+            angezeigt_pfad = key_pfad + ".angezeigt"
             try:
-                if time.time() - os.path.getmtime(key_pfad) > ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK:
+                # Markierung von einem frueheren Schluessel (aelter als der jetzige) verwerfen
+                if (os.path.exists(angezeigt_pfad) and os.path.exists(key_pfad)
+                        and os.path.getmtime(angezeigt_pfad) < os.path.getmtime(key_pfad)):
+                    os.remove(angezeigt_pfad)
+                if (os.path.exists(angezeigt_pfad)
+                        and time.time() - os.path.getmtime(angezeigt_pfad) > ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK):
                     os.remove(key_pfad)
+                    os.remove(angezeigt_pfad)
                 else:
                     schluessel = _lese_datei_falls_vorhanden(key_pfad)
             except OSError:
                 pass
         ergebnis[name] = {"status": status, "schluessel": schluessel}
     return ergebnis
+
+
+def _archiv_schluessel_anzeige_merken(zustand):
+    """Beim ersten Anzeigen eines frischen Schluessels den Zeitpunkt merken -
+    ab dann laufen die 10 Minuten (ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK)."""
+    for name, key_pfad in (("archiv", ARCHIV_SCHLUESSEL_PATH), ("bilder", BILDER_SCHLUESSEL_PATH)):
+        if zustand[name]["status"] == "fresh" and zustand[name]["schluessel"]:
+            angezeigt_pfad = key_pfad + ".angezeigt"
+            if not os.path.exists(angezeigt_pfad):
+                try:
+                    open(angezeigt_pfad, "w").close()
+                except OSError:
+                    pass
 
 
 def _archiv_schluessel_erforderlich():
@@ -984,6 +1030,23 @@ def thumbnail_entfernen(verzeichnis, dateiname):
         pass
 
 
+def verwaiste_thumbnails_entfernen(verzeichnis):
+    """Thumbnails ohne Originalfoto loeschen - deckt alle Loeschwege ab, die
+    thumbnail_entfernen() nicht selbst aufrufen (z. B. dunkle Fotos in
+    honigbox.sh). Sonst fuellen Waisen mit der Zeit den Bilder-Container."""
+    ordner = os.path.join(verzeichnis, THUMB_ORDNER_NAME)
+    try:
+        namen = os.listdir(ordner)
+    except OSError:
+        return
+    for name in namen:
+        if not os.path.exists(os.path.join(verzeichnis, name)):
+            try:
+                os.remove(os.path.join(ordner, name))
+            except OSError:
+                pass
+
+
 def zugang_alle_fotos_loeschen():
     """Loescht ALLE Fotos - aktuelle wie archivierte - inkl. Thumbnails und
     Archiv-Notizen. Bewusste Konsequenz eines Passwort-Resets (siehe
@@ -991,8 +1054,16 @@ def zugang_alle_fotos_loeschen():
     nach einem Neustart verschafft und nimmt den Datenverlust in Kauf - ein
     Reset OHNE Datenverlust waere sonst der einfachste Weg, den
     Passwortschutz komplett zu umgehen."""
-    for verzeichnis in (BILDER_DIR, ARCHIV_DIR):
-        for dateiname in liste_bilder(verzeichnis):
+    # Notfall-Fotos (RAM, solange der Bilder-Container nach dem Boot gesperrt
+    # ist - genau das Zeitfenster, in dem ein Reset moeglich ist) gehoeren
+    # dazu: sonst landeten sie nach "Keine Wiederherstellung" im neuen
+    # Container und der neue Passwort-Inhaber saehe Fotos von vor dem Reset.
+    for verzeichnis in (BILDER_DIR, ARCHIV_DIR, os.path.join(ARCHIV_RUN_DIR, "notfall-fotos")):
+        try:
+            dateinamen = liste_bilder(verzeichnis)
+        except OSError:
+            continue
+        for dateiname in dateinamen:
             try:
                 os.remove(os.path.join(verzeichnis, dateiname))
             except OSError:
@@ -1336,8 +1407,18 @@ def speichere_telegram_einstellungen(rohdaten):
         if not ok:
             warnung = f"Bot-Token konnte nicht bestätigt werden: {fehler}"
     bereinigt = {"bot_token": token, "bot_username": username, "aktiv": aktiv, "meldungen": meldungen}
+    alter_token = lade_telegram_einstellungen().get("bot_token", "")
     with open(TELEGRAM_EINSTELLUNGEN_PATH, "w") as f:
         json.dump(bereinigt, f)
+    if token != alter_token:
+        # update_id zaehlt pro Bot: ein Offset vom alten Bot liess Telegram die
+        # Updates des neuen als "schon bestaetigt" verwerfen - "/start <code>"
+        # kam nie an. Verbundene Chats gehoeren ebenfalls zum alten Bot.
+        for pfad in (TELEGRAM_OFFSET_PATH, TELEGRAM_CHATS_PATH):
+            try:
+                os.remove(pfad)
+            except OSError:
+                pass
     _schreibe_telegram_shell_conf(token, aktiv, meldungen)
     return bereinigt, warnung
 
@@ -1929,11 +2010,14 @@ def aufraeum_schleife():
                 try:
                     if os.path.getmtime(pfad) < grenze:
                         os.remove(pfad)
+                        thumbnail_entfernen(BILDER_DIR, datei)
                         geloescht += 1
                 except OSError:
                     pass
             if geloescht:
                 print(f"Auto-Cleanup: {geloescht} Foto(s) aelter als {tage} Tage {stunden} Stunden geloescht")
+        verwaiste_thumbnails_entfernen(BILDER_DIR)
+        verwaiste_thumbnails_entfernen(ARCHIV_DIR)
         time.sleep(AUFRAEUM_INTERVALL_SEK)
 
 
@@ -1967,6 +2051,7 @@ def _wenig_speicher_aufraeumen():
             break
         try:
             os.remove(os.path.join(BILDER_DIR, name))
+            thumbnail_entfernen(BILDER_DIR, name)
             geloescht += 1
         except OSError:
             pass
@@ -2180,10 +2265,11 @@ class Handler(BaseHTTPRequestHandler):
         elif aktion == "bestaetigt":
             for name, key_pfad in (("archiv", ARCHIV_SCHLUESSEL_PATH), ("bilder", BILDER_SCHLUESSEL_PATH)):
                 if zustand[name]["status"] == "fresh":
-                    try:
-                        os.remove(key_pfad)
-                    except OSError:
-                        pass
+                    for pfad in (key_pfad, key_pfad + ".angezeigt"):
+                        try:
+                            os.remove(pfad)
+                        except OSError:
+                            pass
 
         return self._redirect("/archiv-schluessel")
 

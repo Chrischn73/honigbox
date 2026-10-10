@@ -184,18 +184,43 @@ def test_post_bestaetigt_loescht_klartext_schluessel(archiv_dateien):
 
 
 def test_abgelaufener_klartext_schluessel_wird_automatisch_geloescht(archiv_dateien):
-    """Der Schluessel soll nur EINMALIG kurz nach dem Erzeugen abrufbar
+    """Der Schluessel soll nur kurz nach seiner ERSTEN ANZEIGE abrufbar
     sein, nicht dauerhaft - siehe ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK."""
     base_url, mod, run_dir = archiv_dateien
     (run_dir / "archiv-status").write_text("fresh")
     key_datei = run_dir / "archiv-key"
     key_datei.write_text("deadbeef" * 8)
     alt = mod.time.time() - mod.ARCHIV_SCHLUESSEL_ANZEIGE_MAX_SEK - 10
-    os.utime(str(key_datei), (alt, alt))
+    os.utime(str(key_datei), (alt - 5, alt - 5))
+    angezeigt = run_dir / "archiv-key.angezeigt"
+    angezeigt.write_text("")
+    os.utime(str(angezeigt), (alt, alt))
 
     zustand = mod._archiv_schluessel_status()
     assert zustand["archiv"]["schluessel"] is None
     assert not key_datei.exists()
+    assert not angezeigt.exists()
+
+
+def test_nie_angezeigter_schluessel_bleibt_erhalten(archiv_dateien):
+    """Erstinstallation: Der Container entsteht beim Boot, der Nutzer richtet
+    erst WLAN ein und oeffnet die Galerie z. B. 20 Min. spaeter. Der Schluessel
+    darf bis dahin nicht verfallen sein - sonst kennt ihn niemand und das
+    Archiv ist beim naechsten Neustart verloren."""
+    base_url, mod, run_dir = archiv_dateien
+    (run_dir / "archiv-status").write_text("fresh")
+    key_datei = run_dir / "archiv-key"
+    key_datei.write_text("deadbeef" * 8)
+    alt = mod.time.time() - 20 * 60
+    os.utime(str(key_datei), (alt, alt))
+
+    assert mod._archiv_schluessel_status()["archiv"]["schluessel"] == "deadbeef" * 8
+    status, body = _raw_get_body(base_url, "/archiv-schluessel")
+    assert status == 200
+    assert b"deadbeef" * 8 in body
+    # Ab jetzt laufen die 10 Minuten
+    assert (run_dir / "archiv-key.angezeigt").exists()
+    assert key_datei.exists()
 
 
 def _raw_get_body(base_url, path):

@@ -102,14 +102,17 @@ if [ "$SPEICHERORT" = "ram" ]; then
         # mit dem neuen Bilder-Container-Handling aber potenziell schon.
         trap 'systemctl start honigbox.service honigbox-galerie.service 2>/dev/null || true' EXIT
         mkdir -p "$BILDER_DIR"
-        TEMP="$(mktemp -d)"
-        cp -a "$BILDER_DIR"/. "$TEMP"/ 2>/dev/null || true
-        AKTUELL_MB=$(du -sm "$TEMP" 2>/dev/null | cut -f1 || echo 0)
+        # Groesse VOR dem Kopieren pruefen - der Zwischenspeicher liegt im RAM.
+        AKTUELL_MB=$(du -sm "$BILDER_DIR" 2>/dev/null | cut -f1 || echo 0)
         if [ "$AKTUELL_MB" -gt "$GROESSE_MB" ]; then
             echo "FEHLER: vorhandene Fotos (${AKTUELL_MB} MB) passen nicht in die gewaehlte RAM-Groesse (${GROESSE_MB} MB) - bitte zuerst Fotos loeschen/archivieren oder eine groessere Groesse waehlen." >&2
-            rm -rf "$TEMP"
             exit 1
         fi
+        # Zwischenspeicher im RAM (/dev/shm), nie in /tmp: das liegt auf
+        # aelterem Raspberry Pi OS auf der SD-Karte - die Fotos aus dem
+        # verschluesselten Container landeten dort sonst im Klartext.
+        TEMP="$(mktemp -d -p /dev/shm)"
+        cp -a "$BILDER_DIR"/. "$TEMP"/ 2>/dev/null || true
         # Bilder-Container schliessen, FALLS gerade durch den "Platte"-Modus
         # offen (Phase C) - harmlos/no-op, falls BILDER_DIR nur ein normaler
         # Ordner war. Muss VOR dem tmpfs-Mount an derselben Stelle passieren.
@@ -127,7 +130,8 @@ else
     if ist_tmpfs; then
         systemctl stop honigbox.service honigbox-galerie.service || true
         trap 'systemctl start honigbox.service honigbox-galerie.service 2>/dev/null || true' EXIT
-        TEMP="$(mktemp -d)"
+        # Im RAM zwischenspeichern, nie in /tmp (siehe oben).
+        TEMP="$(mktemp -d -p /dev/shm)"
         cp -a "$BILDER_DIR"/. "$TEMP"/ 2>/dev/null || true
         umount "$BILDER_DIR"
         fstab_eintrag_entfernen

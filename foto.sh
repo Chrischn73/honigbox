@@ -51,7 +51,19 @@ KAMERA_CONF="/opt/honigbox/einstellungen/.kamera-einstellungen.sh"
 : "${VFLIP:=0}"
 : "${ZOOM:=1.0}"
 
-KAMERA_ARGS=(--datetime -n --width "$BREITE" --height "$HOEHE"
+# Dateiname mit Jahr (JJJJMMTT_hhmmss.jpg). Frueher --datetime: das benennt
+# MMTThhmmss.jpg OHNE Jahr - im dauerhaften Archiv sortierten dadurch die Jahre
+# durcheinander, und ein Foto vom selben Tag/Sekunde eines Vorjahres wurde
+# beim Archivieren ueberschrieben. Neue Namen sortieren vor den alten ("2..." >
+# "0..."/"1..."), die Galerie zeigt ohnehin nur den Dateinamen an.
+DATEINAME="$(date +%Y%m%d_%H%M%S).jpg"
+NR=2
+while [ -e "$DATEINAME" ]; do
+  DATEINAME="$(date +%Y%m%d_%H%M%S)-$NR.jpg"
+  NR=$((NR + 1))
+done
+
+KAMERA_ARGS=(-o "$DATEINAME" -n --width "$BREITE" --height "$HOEHE"
   --metering "$METERING" --ev "$EV" --exposure "$BELICHTUNGSMODUS"
   --brightness "$HELLIGKEIT" --contrast "$KONTRAST" --saturation "$SAETTIGUNG"
   --sharpness "$SCHAERFE" --awb "$WEISSABGLEICH" --denoise "$RAUSCHUNTERDRUECKUNG"

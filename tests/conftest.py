@@ -48,6 +48,9 @@ def galerie_env(tmp_path, monkeypatch):
     # den isolierten Test-Verzeichnissen ist ja nie ein Zugang gesetzt) -
     # siehe test_zugang.py fuer die dedizierten Tests OHNE dieses Flag.
     monkeypatch.setenv("GALERIE_ZUGANG_AUS", "1")
+    # Markierungen fuer automatische Neustarts (Reset-Fenster-Sperre) nie aus
+    # dem echten /var/lib lesen.
+    monkeypatch.setenv("AUTO_NEUSTART_DIR", str(tmp_path / "auto-neustart"))
 
     import galerie_server
     importlib.reload(galerie_server)

@@ -45,6 +45,22 @@ def test_loeschen_entfernt_thumbnail_mit(server):
     assert not os.path.isfile(mod._thumb_pfad(mod.BILDER_DIR, datei))
 
 
+def test_verwaiste_thumbnails_werden_aufgeraeumt(server):
+    """Automatisches Loeschen (Aufbewahrungsfrist, Speicherwache, dunkle Fotos)
+    liess die Thumbnails liegen - im festen 512-MB-Container lief das ueber
+    Monate voll. verwaiste_thumbnails_entfernen() raeumt sie weg."""
+    base_url, mod = server
+    behalten, weg = "20260101_200000.jpg", "20260101_210000.jpg"
+    for datei in (behalten, weg):
+        _testfoto(os.path.join(mod.BILDER_DIR, datei))
+        assert get_raw(base_url, "/thumbs/" + datei)[0] == 200
+    os.remove(os.path.join(mod.BILDER_DIR, weg))  # wie aufraeum_schleife() bis v1.3.48
+
+    mod.verwaiste_thumbnails_entfernen(mod.BILDER_DIR)
+    assert os.path.isfile(mod._thumb_pfad(mod.BILDER_DIR, behalten))
+    assert not os.path.isfile(mod._thumb_pfad(mod.BILDER_DIR, weg))
+
+
 @pytest.fixture
 def cross_device_server(tmp_path, monkeypatch):
     """Wie die 'server'-Fixture in conftest.py, aber BILDER_DIR bewusst auf

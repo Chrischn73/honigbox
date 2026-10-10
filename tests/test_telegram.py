@@ -4,6 +4,7 @@ in telegram_update_verarbeiten() - der eigentliche Netzwerk-Poll
 (telegram_wache_schleife) wird bewusst NICHT getestet, siehe README.md."""
 import io
 import json
+import os
 import urllib.request
 
 from helpers import get, post
@@ -289,4 +290,26 @@ def test_update_verarbeiten_ignoriert_nachrichten_ohne_start(galerie_env):
     neuer_offset = mod.telegram_update_verarbeiten(antwort, 0)
 
     assert neuer_offset == 3
+    assert mod.lade_telegram_chats() == {}
+
+
+def test_neuer_bot_token_setzt_offset_und_chats_zurueck(server, monkeypatch):
+    """update_id zaehlt pro Bot - ein Offset vom alten Bot liess Telegram alle
+    Updates des neuen Bots verwerfen, "Telegram verbinden" klappte nie."""
+    base_url, mod = server
+    monkeypatch.setattr(
+        mod.urllib.request, "urlopen",
+        _fake_urlopen_factory([{"ok": True, "result": {"username": "Bot"}}] * 3))
+    post(base_url, "/api/telegram", {"bot_token": "alt"})
+    with open(mod.TELEGRAM_OFFSET_PATH, "w") as f:
+        f.write("987654")
+    with open(mod.TELEGRAM_CHATS_PATH, "w") as f:
+        json.dump({"42": {"name": "Christian"}}, f)
+
+    # Gleicher Token (z. B. nur "aktiv" umgeschaltet): nichts zuruecksetzen
+    post(base_url, "/api/telegram", {"bot_token": "alt", "aktiv": True})
+    assert mod.lade_telegram_chats() == {"42": {"name": "Christian"}}
+
+    post(base_url, "/api/telegram", {"bot_token": "neu"})
+    assert not os.path.exists(mod.TELEGRAM_OFFSET_PATH)
     assert mod.lade_telegram_chats() == {}

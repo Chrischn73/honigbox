@@ -20,6 +20,11 @@ Environment=GALERIE_ARCHIV_STATUS=/run/honigbox/archiv-status
 Environment=GALERIE_BILDER_STATUS=/run/honigbox/bilder-status
 Environment=GALERIE_ARCHIV_RUN_DIR=/run/honigbox
 Environment=PYTHONUNBUFFERED=1
+# Ausweich-Port (GALERIE_PORT=8091), falls 8090 belegt ist - schreibt
+# setup/install.sh. Steht bewusst hier statt per sed in dieser Datei: ein
+# normales Update ueber das Setup-Portal kopiert die Unit neu und haette den
+# Ausweich-Port sonst wieder auf 8090 zurueckgesetzt.
+EnvironmentFile=-/etc/default/honigbox-galerie
 # Zum Absichern per Basic-Auth zwei Zeilen einkommentieren und Werte setzen:
 #Environment=GALERIE_USER=honig
 #Environment=GALERIE_PASSWORT=aendern

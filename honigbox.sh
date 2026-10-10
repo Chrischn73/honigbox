@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #---------------------------------------------------------------------
 #    ___  ___  _ ____
 #   / _ \/ _ \(_) __/__  __ __
@@ -14,6 +14,7 @@
 #---------------------------------------------------------------------
 import json
 import os
+import queue
 import subprocess
 import threading
 import time
@@ -274,13 +275,27 @@ def run(script, *args):
         print(f"{script} konnte nicht gestartet werden: {e}")
 
 
+# Pushover laeuft in einem eigenen Thread mit Warteschlange: send_pushover.sh
+# wartet bei Netzproblemen per curl --retry bis zu einer Minute. Frueher lief
+# das direkt in der Tuerueberwachung - bei Internet-Ausfall begann die
+# Fotoserie nach einer Oeffnung erst, wenn der Kunde schon wieder weg war.
+# Die Warteschlange haelt die Reihenfolge ("geoeffnet" vor "geschlossen").
+_PUSH_WARTESCHLANGE = queue.Queue()
+
+
+def _push_arbeiter():
+    while True:
+        meldung_id = _PUSH_WARTESCHLANGE.get()
+        run("send_pushover.sh", meldung_id)
+
+
+threading.Thread(target=_push_arbeiter, daemon=True).start()
+
+
 def push(meldung_id):
-    run("send_pushover.sh", meldung_id)
-    # Telegram bewusst per Popen (nicht run()/wait) angestossen - send_pushover.sh
-    # oben blockiert schon bis zu mehrere Sekunden bei Netzwerkproblemen
-    # (curl --retry); ein zweiter, ebenfalls wartender Aufruf wuerde diese
-    # Verzoegerung fuer die Tuerueberwachung verdoppeln. Telegram braucht das
-    # Ergebnis hier nicht, laeuft also unabhaengig im Hintergrund weiter.
+    _PUSH_WARTESCHLANGE.put(meldung_id)
+    # Telegram bewusst per Popen (nicht run()/wait) angestossen - Telegram
+    # braucht das Ergebnis hier nicht, laeuft also unabhaengig im Hintergrund.
     # try/except: fehlt/fehlt-ausfuehrbar send_telegram.sh (z.B. direkt nach
     # einem reinen "Update" ohne erneutes install.sh) darf die Tuerueberwachung
     # NIE zum Absturz bringen - das fuehrte sonst zu einer Neustart-Schleife
@@ -445,7 +460,23 @@ def behandle_tueroeffnung(sofortfoto_erledigt=False):
             print("Tür wieder zu !")
             push("geschlossen")
             return
-        print("Tür weiterhin offen nach maximaler Eskalationszeit")
+        # Nach der letzten Eskalation keine weiteren Fotos/Meldungen, aber auf
+        # das Schliessen warten: Frueher kehrte die Funktion hier zurueck, die
+        # Hauptschleife sah die weiterhin offene Tuer sofort als NEUE Oeffnung
+        # ("geoeffnet", neue Fotoserie, Eskalation mit falscher Zeitangabe) -
+        # alle ~34 Minuten erneut, solange z. B. beim Auffuellen offen blieb.
+        print("Tür weiterhin offen nach maximaler Eskalationszeit - warte auf Schließen")
+        neustart = False
+        while door_is_open():
+            if neustart_angefordert():
+                neustart = True
+                break
+            time.sleep(LOOP_TICK)
+        if neustart:
+            print("Simulation: Türöffnung wird als neu behandelt")
+            continue
+        print("Tür wieder zu !")
+        push("geschlossen")
         return
 
 

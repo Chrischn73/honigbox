@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.48';
+const APP_VERSION = 'v1.3.49';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -804,7 +804,7 @@ async function logoHochladen() {
 }
 
 async function logoZuruecksetzen() {
-  if (!confirm('Eigenes Logo entfernen und wieder das Standard-Logo anzeigen?')) return;
+  if (!await bestaetigen('Eigenes Logo entfernen und wieder das Standard-Logo anzeigen?')) return;
   try {
     const res = await fetch('/api/logo/zuruecksetzen', { method: 'POST' });
     if (res.ok) {
@@ -1874,6 +1874,10 @@ async function batchArchivieren() {
 
 async function batchLoeschen() {
   if (ausgewaehlt.size === 0) return;
+  const frage = zeigeArchiv
+    ? `${ausgewaehlt.size} Foto(s) endgültig aus dem Archiv löschen? Notizen dazu gehen mit verloren.`
+    : `${ausgewaehlt.size} Foto(s) löschen?`;
+  if (!await bestaetigen(frage)) return;
   const res = await fetch('/api/photos/loeschen', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

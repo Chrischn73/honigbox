@@ -6,6 +6,7 @@ werden, die die JSON-fokussierten Helfer nicht abdecken."""
 import http.client
 import json
 import os
+import time
 from urllib.parse import urlencode, urlparse
 
 import pytest
@@ -301,3 +302,26 @@ def test_dienste_neustart_verlangt_aktuelles_passwort(zugang_server, monkeypatch
         base_url, "/api/system/dienste-neustart", {"passwort": "aktuellesPW1"}, cookie=cookie)
     assert status == 200
     assert data["ok"] is True
+
+
+def test_kein_reset_fenster_nach_automatischem_neustart(zugang_server, tmp_path):
+    """Auto-Neustart (systemneustart.py) bzw. "Neu starten" im Setup-Portal
+    hinterlegen vorher eine Markierung - ein so ausgeloester Start darf das
+    Reset-Fenster nicht oeffnen, sonst koennte es jeder im WLAN abpassen."""
+    base_url, mod = zugang_server
+    mod.setze_zugang_passwort("altesPasswort1")
+    assert mod.zugang_reset_moeglich() is True
+
+    os.makedirs(mod.AUTO_NEUSTART_DIR, exist_ok=True)
+    marker = os.path.join(mod.AUTO_NEUSTART_DIR, "reboot")
+    with open(marker, "w") as f:
+        f.write("0\n")
+    assert mod.zugang_reset_moeglich() is False
+    status, _, body = _request(base_url, "GET", "/login")
+    assert b'href="/zuruecksetzen"' not in body
+
+    # Alte Markierung (laenger als 1 h vor dem Boot) zaehlt nicht mehr: ein
+    # spaeterer Start von Hand oeffnet das Fenster wieder.
+    alt = time.time() - 2 * 3600
+    os.utime(marker, (alt, alt))
+    assert mod.zugang_reset_moeglich() is True

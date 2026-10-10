@@ -51,3 +51,14 @@ def test_ephemere_datei_aendert_fingerabdruck_nicht(tmp_path):
     vorher = fingerabdruck(app)
     (app / "einstellungen" / ".letzte-oeffnung.json").write_text('{"letzte_oeffnung": 1}')
     assert fingerabdruck(app) == vorher
+
+
+def test_statusdateien_von_systemneustart_aendern_fingerabdruck_nicht(tmp_path):
+    """systemneustart.py schreibt seine Status-/Erinnerungsdateien jeden Tag
+    neu. Zaehlten sie mit, entstuende jede Nacht ein neues Backup, obwohl sich
+    nichts geaendert hat."""
+    app = app_ordner(tmp_path)
+    vorher = fingerabdruck(app)
+    for name in (".systemupdate-status.json", ".archiv-erinnerung.json", ".stiller-dienstneustart"):
+        (app / "einstellungen" / name).write_text('{"geprueft": 123}')
+    assert fingerabdruck(app) == vorher

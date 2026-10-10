@@ -15,6 +15,7 @@ SKRIPT = os.path.join(os.path.dirname(__file__), "..", "systemneustart.py")
 def sn(tmp_path, monkeypatch):
     monkeypatch.setenv("HONIGBOX_BASIS", str(tmp_path))
     monkeypatch.setenv("HONIGBOX_RUN_DIR", str(tmp_path / "run"))
+    monkeypatch.setenv("AUTO_NEUSTART_DIR", str(tmp_path / "auto-neustart"))
     (tmp_path / "einstellungen").mkdir()
     (tmp_path / "fotos" / "Bilder").mkdir(parents=True)
     (tmp_path / "fotos" / "Archiv").mkdir(parents=True)
@@ -97,6 +98,8 @@ def test_reboot_nach_intervall_meldet_und_bootet(sn, monkeypatch):
     assert sn.main() == 0
     assert aufrufe[0][:2] == ("melde", "systemneustart")
     assert aufrufe[-1] == ("systemctl", "reboot")
+    # Markierung, damit die Galerie nach diesem Start kein Reset-Fenster oeffnet
+    assert os.path.isfile(os.path.join(sn.AUTO_NEUSTART_DIR, "reboot"))
 
 
 def test_abbruch_wenn_fotos_nicht_archivierbar(sn, monkeypatch):

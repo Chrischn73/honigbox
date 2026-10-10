@@ -33,6 +33,10 @@ EINSTELLUNGEN_DIR = os.path.join(BASIS, "einstellungen")
 BILDER_DIR = os.path.join(BASIS, "fotos", "Bilder")
 ARCHIV_DIR = os.path.join(BASIS, "fotos", "Archiv")
 RUN_DIR = os.environ.get("HONIGBOX_RUN_DIR", "/run/honigbox")
+# Markierungen fuer automatische Neustarts: Galerie und Imker-App oeffnen nach
+# einem so ausgeloesten Start kein Passwort-Reset-Fenster (siehe
+# galerie_server._automatischer_geraete_start()).
+AUTO_NEUSTART_DIR = os.environ.get("AUTO_NEUSTART_DIR", "/var/lib/beetown-auto-neustart")
 
 EINSTELLUNGEN_PATH = os.path.join(EINSTELLUNGEN_DIR, ".systemupdate-einstellungen.json")
 STATUS_PATH = os.path.join(EINSTELLUNGEN_DIR, ".systemupdate-status.json")
@@ -285,6 +289,19 @@ def dienste_neu_starten_noetig():
     return start_mono > 0 and dpkg_mono > start_mono
 
 
+def markiere_auto_neustart(namen):
+    """Hinterlegt fuer jeden Namen ("reboot" oder eine Unit) den Zeitpunkt
+    eines automatischen Neustarts. Fehler sind egal - dann oeffnet sich im
+    schlimmsten Fall das Reset-Fenster wie bisher."""
+    try:
+        os.makedirs(AUTO_NEUSTART_DIR, mode=0o755, exist_ok=True)
+        for name in namen:
+            with open(os.path.join(AUTO_NEUSTART_DIR, name), "w") as f:
+                f.write(f"{int(time.time())}\n")
+    except OSError:
+        pass
+
+
 def main():
     einstellungen = lade_einstellungen()
     grund = neustart_grund()
@@ -323,6 +340,7 @@ def main():
             zusatz += f" {verschoben} Foto(s) wurden vorher ins Archiv verschoben."
         schreibe_status(einstellungen, grund, "Neustart wird ausgeführt.")
         melde("systemneustart", zusatz)
+        markiere_auto_neustart(["reboot"])
         subprocess.run(["systemctl", "reboot"], check=False)
         return 0
 
@@ -341,6 +359,7 @@ def main():
         # aktualisierten Bibliotheken ebenfalls.
         if os.path.exists("/etc/systemd/system/imkerei.service"):
             dienste.append("imkerei.service")
+        markiere_auto_neustart(dienste)
         subprocess.run(["systemctl", "restart", *dienste], check=False)
         return 0
 

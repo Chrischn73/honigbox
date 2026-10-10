@@ -34,6 +34,13 @@ EPHEMER = {
     ".fotos-pause-bis.json",
     ".foto-testmodus-bis.json",
     ".foto-testmodus-metadata.json",
+    # systemneustart.py (taeglich 05:00 + nach dem Boot) - sonst aendert sich
+    # der Fingerabdruck jede Nacht und "nur bei Aenderung" greift nie.
+    ".systemupdate-status.json",
+    ".systemupdate-status.json.tmp",
+    ".archiv-erinnerung.json",
+    ".archiv-erinnerung.json.tmp",
+    ".stiller-dienstneustart",
 }
 
 
