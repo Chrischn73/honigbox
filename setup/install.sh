@@ -396,7 +396,7 @@ log "HonigBox im gemeinsamen Setup-Portal registrieren"
 cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
 {
   "id": "honigbox",
-  "label": "HonigBox",
+  "label": "BeeTown HonigBox",
   "emoji": "🍯",
   "beschreibung": "Überwacht die Tür einer Honig-Verkaufsbox per Kontaktschalter, macht bei jeder Öffnung automatisch Fotos und schickt eine Push-Benachrichtigung ans Handy. Läuft direkt auf einem Raspberry Pi in der Box.",
   "app_port_default": 8090,
@@ -438,7 +438,7 @@ cat > /opt/setup-portal/apps.d/honigbox.json << JSONEOF
   },
   "companion": {
     "app_id": "imkerei",
-    "label": "BeeTown",
+    "label": "BeeTown Imker-App",
     "emoji": "🐝",
     "github_repo": "Chrischn73/beetown",
     "beschreibung": "App für die Imkerei-Verwaltung: Bienenstände, Rühr-Vorgänge und Honigverkauf erfassen und dokumentieren."
