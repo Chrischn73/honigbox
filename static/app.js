@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.46';
+const APP_VERSION = 'v1.3.47';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -1150,7 +1150,7 @@ function renderSysupdStatus(status) {
     if (status.laufzeit_tage != null) teile.push('Läuft seit ' + status.laufzeit_tage + ' Tagen');
     if (status.notiz) teile.push(status.notiz);
   } else {
-    teile.push('Noch keine Prüfung durchgeführt (läuft nachts um 4 Uhr).');
+    teile.push('Noch keine Prüfung durchgeführt (läuft nachts um 5 Uhr).');
   }
   sysupdStatusEl.textContent = teile.join(' · ');
 }

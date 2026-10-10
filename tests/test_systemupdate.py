@@ -145,3 +145,34 @@ def test_archiv_erinnerung_max_dreimal(sn, monkeypatch):
         f.write("unlocked")
     sn.archiv_erinnerung()
     assert json.load(open(sn.ERINNERUNG_PATH))["anzahl"] == 0
+
+
+def test_kein_reboot_waehrend_portal_update(sn, monkeypatch, tmp_path):
+    """Haelt das Setup-Portal seine Update-Sperre (z. B. 'Alle aktualisieren'
+    oder naechtliches Auto-Update), wird der Neustart zurueckgestellt."""
+    import fcntl
+    sperre = tmp_path / "update.lock"
+    monkeypatch.setattr(sn, "PORTAL_SPERRE", str(sperre))
+    monkeypatch.setattr(sn, "laufzeit_sek", lambda: 29 * 86400)
+    monkeypatch.setattr(sn, "neustart_grund", lambda: "Kernel-Update")
+    monkeypatch.setattr(sn, "tuer_offen", lambda: False)
+    aufrufe = []
+    echtes_run = sn.subprocess.run
+
+    def run(cmd, **k):
+        aufrufe.append(tuple(cmd))
+        if cmd[:2] == ["systemctl", "list-units"]:
+            return echtes_run(["true"], capture_output=True, text=True)
+        return echtes_run(["false"])
+
+    monkeypatch.setattr(sn.subprocess, "run", run)
+    monkeypatch.setattr(sn, "melde", lambda *a: aufrufe.append(("melde",) + a))
+    # Eigenes open() = eigene Open File Description -> flock kollidiert wie bei
+    # einem fremden Prozess.
+    with open(sperre, "a+") as halter:
+        fcntl.flock(halter, fcntl.LOCK_EX)
+        assert sn.main() == 0
+    assert ("systemctl", "reboot") not in aufrufe
+    assert "App-Update" in json.load(open(sn.STATUS_PATH))["notiz"]
+    # Sperre frei, keine Update-Units aktiv -> nicht mehr beschaeftigt
+    assert sn.portal_vorgang_laeuft() is False

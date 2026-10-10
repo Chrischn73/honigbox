@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 HonigBox - naechtlicher Systemcheck nach Sicherheitsupdates (laeuft als root
-ueber honigbox-systemneustart.timer, taeglich 04:00 und 10 Min. nach dem Boot).
+ueber honigbox-systemneustart.timer, taeglich 05:00 und 10 Min. nach dem Boot -
+bewusst nach den App-Updates um 04:00-04:05, siehe portal_vorgang_laeuft()).
 
 Aufgaben:
 1. Status fuer die Weboberflaeche schreiben (einstellungen/.systemupdate-status.json).
@@ -17,6 +18,7 @@ Aufgaben:
      offen, niemand muss den Schluessel neu eingeben).
 Meldungen enthalten nie Fotos.
 """
+import fcntl
 import glob
 import json
 import os
@@ -41,6 +43,11 @@ TUER_STATUS_PATH = os.path.join(RUN_DIR, "tuer-status.json")
 ARCHIV_STATUS_PATH = os.path.join(RUN_DIR, "archiv-status")
 APT_STAMP = "/var/lib/apt/periodic/unattended-upgrades-stamp"
 DPKG_LOG = "/var/log/dpkg.log"
+# Gemeinsame Update-Sperre des Setup-Portals (flock, siehe setup_portal.py
+# try_acquire_update_lock()).
+PORTAL_SPERRE = "/run/setup-portal/update.lock"
+# Units, die waehrenddessen App-Dateien umbauen oder das Portal neu starten.
+UPDATE_UNITS = ("*-update-check.service", "setup-portal-install-*")
 
 STANDARD = {"auto_neustart": True, "intervall_wochen": 4}
 GUELTIGE_INTERVALLE = (4, 8, 12)
@@ -189,10 +196,31 @@ def tuer_offen():
         return False
 
 
+def portal_vorgang_laeuft():
+    """True, solange das Setup-Portal eine App aktualisiert/installiert oder
+    sich selbst aktualisiert - ein Neustart wuerde das mittendrin abbrechen
+    (halb kopierte App-Dateien). Fragt die Portal-Sperre und die zugehoerigen
+    systemd-Units ab; ohne Portal (Sperrdatei fehlt) zaehlen nur die Units."""
+    try:
+        with open(PORTAL_SPERRE) as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except OSError:
+                return True
+    except OSError:
+        pass
+    erg = subprocess.run(["systemctl", "list-units", "--no-legend", "--plain",
+                          "--state=activating,active,deactivating", *UPDATE_UNITS],
+                         capture_output=True, text=True)
+    return bool(erg.stdout.strip())
+
+
 def system_beschaeftigt():
     """Grund, warum jetzt nicht gebootet/neu gestartet werden soll, sonst None."""
     if tuer_offen():
         return "Tür ist gerade offen"
+    if portal_vorgang_laeuft():
+        return "App-Update im Setup-Portal läuft gerade"
     if subprocess.run(["systemctl", "is-active", "--quiet", "honigbox-backup.service"]).returncode == 0:
         return "Backup läuft gerade"
     for muster in ("speicher_umschalten.sh", "foto.sh", "rpicam-still", "libcamera-still"):
