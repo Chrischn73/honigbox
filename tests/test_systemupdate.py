@@ -156,6 +156,7 @@ def test_kein_reboot_waehrend_portal_update(sn, monkeypatch, tmp_path):
     monkeypatch.setattr(sn, "laufzeit_sek", lambda: 29 * 86400)
     monkeypatch.setattr(sn, "neustart_grund", lambda: "Kernel-Update")
     monkeypatch.setattr(sn, "tuer_offen", lambda: False)
+    monkeypatch.setattr(sn, "ist_tmpfs", lambda p: False)
     aufrufe = []
     echtes_run = sn.subprocess.run
 
