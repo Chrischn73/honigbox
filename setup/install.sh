@@ -506,6 +506,14 @@ systemctl restart honigbox-galerie.service
 systemctl enable --now honigbox-backup.timer
 systemctl enable --now honigbox-update-check.timer
 systemctl enable --now honigbox-systemneustart.timer
+# Vergleichswert fuer das Setup-Portal ("Setup unvollstaendig" bzw. naecht-
+# licher Nachhol-Lauf nach einem reinen Datei-Update) selbst hinterlegen -
+# auch bei einem Lauf per Hand ueber SSH, nicht nur, wenn das Portal
+# install.sh startet. Ohne Hash meldete das Portal frueher nie etwas, ein
+# per SSH installiertes Geraet blieb so dauerhaft auf altem Setup-Stand.
+# Vor dem Update-Check-Start, damit der den Lauf nicht ein zweites Mal anstoesst.
+mkdir -p /opt/setup-portal/state/honigbox
+sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1 > /opt/setup-portal/state/honigbox/install_sh.sha256
 systemctl start honigbox-update-check.service || true
 
 is_wifi_connected() {
