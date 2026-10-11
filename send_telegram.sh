@@ -72,15 +72,21 @@ fi
 
 # Als Kommandozeilenargumente statt in den Python-Quelltext einzubetten -
 # sicher gegenueber Sonderzeichen (Anführungszeichen, Backslashes) im Text.
-python3 - "$TELEGRAM_BOT_TOKEN" "$TEXT" "$CHATS_DATEI" << 'PYEOF'
+# TELEGRAM_API_BASIS nur fuer tests/test_send_telegram.py (lokaler Fake-Server).
+python3 - "$TELEGRAM_BOT_TOKEN" "$TEXT" "$CHATS_DATEI" "${TELEGRAM_API_BASIS:-https://api.telegram.org}" << 'PYEOF'
 import json
 import sys
+import syslog
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
-token, text, chats_pfad = sys.argv[1], sys.argv[2], sys.argv[3]
+token, text, chats_pfad, api_basis = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+# Fehler landen im Journal (journalctl -t honigbox-telegram) - frueher wurden
+# sie komplett verschluckt, eine zur Supergruppe gewordene Gruppe fiel so
+# niemandem auf (Vorfall 2026-10-11).
+syslog.openlog("honigbox-telegram")
 
 try:
     with open(chats_pfad) as f:
@@ -88,18 +94,73 @@ try:
 except (OSError, json.JSONDecodeError):
     sys.exit(0)
 
-for chat_id in chats:
+
+def senden(chat_id):
+    """(ok, antwort) - antwort ist Telegrams JSON, auch bei HTTP-Fehlern
+    (400 & Co. kommen als HTTPError, tragen aber die eigentliche Auskunft im
+    Body). Netzwerkfehler liefern eine Antwort ohne error_code."""
     daten = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+    try:
+        req = urllib.request.Request(f"{api_basis}/bot{token}/sendMessage", data=daten)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            antwort = json.loads(resp.read().decode())
+            return bool(antwort.get("ok")), antwort
+    except urllib.error.HTTPError as e:
+        try:
+            return False, json.loads(e.read().decode())
+        except (ValueError, OSError):
+            return False, {"error_code": e.code, "description": f"HTTP {e.code}"}
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return False, {"description": str(getattr(e, "reason", e))}
+
+
+umzuege = {}
+for chat_id in list(chats):
+    ziel = chat_id
+    ok, antwort = False, {}
     # Bis zu 3 Versuche mit kurzer Pause - laeuft ueber subprocess.Popen im
     # Hintergrund (siehe honigbox.sh push()), verzoegert die Tuerueberwachung
     # also nicht, ein paar Sekunden Wartezeit hier sind unproblematisch.
     for versuch in range(3):
-        try:
-            req = urllib.request.Request(
-                f"https://api.telegram.org/bot{token}/sendMessage", data=daten)
-            urllib.request.urlopen(req, timeout=10)
+        ok, antwort = senden(ziel)
+        if ok:
             break
-        except (urllib.error.URLError, OSError):
-            if versuch < 2:
-                time.sleep(3)
+        parameter = antwort.get("parameters") or {}
+        neue_id = parameter.get("migrate_to_chat_id")
+        if neue_id and ziel == chat_id:
+            # Gruppe wurde zur Supergruppe (z. B. durch Admin-Ernennung) und
+            # hat eine neue ID - sofort dorthin nachsenden und merken.
+            neue_id = str(neue_id)
+            umzuege[chat_id] = neue_id
+            syslog.syslog(syslog.LOG_NOTICE,
+                          f"Gruppe {chat_id} ist jetzt Supergruppe {neue_id} - Chat-ID wird umgestellt")
+            if neue_id in chats:
+                ok = True  # schon separat verknuepft, bekommt ihre Nachricht in eigener Runde
+                break
+            ziel = neue_id
+            continue
+        code = antwort.get("error_code")
+        if code and code < 500 and code != 429:
+            break  # dauerhafter Fehler (Bot entfernt, Chat weg ...) - Wiederholen bringt nichts
+        if versuch < 2:
+            time.sleep(min(int(parameter.get("retry_after") or 3), 10))
+    if not ok:
+        syslog.syslog(syslog.LOG_WARNING,
+                      f"Senden an Chat {ziel} fehlgeschlagen: {antwort.get('description', 'unbekannt')}")
+
+if umzuege:
+    # Frisch einlesen (koennte sich inzwischen geaendert haben) und per "w"
+    # in dieselbe Datei schreiben statt tmp+rename - so bleibt sie www-data
+    # gehoeren, obwohl dieses Skript als root laeuft.
+    try:
+        with open(chats_pfad) as f:
+            aktuell = json.load(f)
+        for alt, neu in umzuege.items():
+            if alt in aktuell:
+                eintrag = aktuell.pop(alt)
+                aktuell.setdefault(neu, eintrag)
+        with open(chats_pfad, "w") as f:
+            json.dump(aktuell, f)
+    except (OSError, json.JSONDecodeError) as e:
+        syslog.syslog(syslog.LOG_WARNING, f"Chat-Liste konnte nicht aktualisiert werden: {e}")
 PYEOF

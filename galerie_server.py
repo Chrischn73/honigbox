@@ -1467,26 +1467,57 @@ def _telegram_offset_schreiben(offset):
         pass
 
 
-def _telegram_sende_nachricht(token, chat_id, text):
+def _telegram_chat_umziehen_in(chats, alte_id, neue_id):
+    """Haengt den Eintrag einer verknuepften Gruppe auf ihre neue Chat-ID um.
+    Telegram wandelt eine normale Gruppe z. B. beim Ernennen von Admins
+    still in eine Supergruppe um - die bekommt dabei eine neue ID (-100...),
+    an die alte kann danach nichts mehr geschickt werden. Aendert nur das
+    uebergebene dict, gibt zurueck, ob sich etwas geaendert hat. Ist die
+    neue ID schon verknuepft (Gruppe neu verbunden), faellt nur der alte
+    Eintrag weg."""
+    alte_id, neue_id = str(alte_id), str(neue_id)
+    if alte_id not in chats or alte_id == neue_id:
+        return False
+    eintrag = chats.pop(alte_id)
+    chats.setdefault(neue_id, eintrag)
+    return True
+
+
+def telegram_chat_umziehen(alte_id, neue_id):
+    chats = lade_telegram_chats()
+    if _telegram_chat_umziehen_in(chats, alte_id, neue_id):
+        try:
+            with open(TELEGRAM_CHATS_PATH, "w") as f:
+                json.dump(chats, f)
+        except OSError:
+            pass
+
+
+def _telegram_sende_nachricht(token, chat_id, text, nach_umzug=False):
     """Gibt (ok, fehlertext) zurueck. Bestehende Aufrufer (Verbindungs-
     bestaetigung) ignorieren den Rueckgabewert bewusst weiter (fire-and-
-    forget); der Test-Button unten wertet ihn aus."""
+    forget); der Test-Button unten wertet ihn aus. Meldet Telegram, dass
+    die Gruppe zur Supergruppe wurde (parameters.migrate_to_chat_id), wird
+    die gespeicherte ID umgestellt und einmal an die neue ID nachgesendet."""
     try:
         daten = urlencode({"chat_id": chat_id, "text": text}).encode()
         req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=daten)
         with urllib.request.urlopen(req, timeout=10) as resp:
             antwort = json.loads(resp.read().decode())
-            if antwort.get("ok"):
-                return True, ""
-            return False, antwort.get("description", "Unbekannter Fehler")
     except urllib.error.HTTPError as e:
         try:
             antwort = json.loads(e.read().decode())
-            return False, antwort.get("description", str(e))
         except (json.JSONDecodeError, OSError):
             return False, str(e)
     except (urllib.error.URLError, OSError) as e:
         return False, str(e)
+    if antwort.get("ok"):
+        return True, ""
+    neue_id = (antwort.get("parameters") or {}).get("migrate_to_chat_id")
+    if neue_id and not nach_umzug:
+        telegram_chat_umziehen(chat_id, neue_id)
+        return _telegram_sende_nachricht(token, neue_id, text, nach_umzug=True)
+    return False, antwort.get("description", "Unbekannter Fehler")
 
 
 def sende_telegram_test(token):
@@ -1525,6 +1556,18 @@ def telegram_update_verarbeiten(antwort, offset):
     for update in antwort.get("result", []):
         offset = max(offset, update["update_id"] + 1)
         nachricht = update.get("message") or {}
+        # Gruppe wurde zur Supergruppe: Telegram schickt eine Dienstnachricht
+        # in die alte Gruppe (migrate_to_chat_id) und eine in die neue
+        # (migrate_from_chat_id) - je nachdem, welche ankommt, umhaengen.
+        chat_id_hier = (nachricht.get("chat") or {}).get("id")
+        if nachricht.get("migrate_to_chat_id") and chat_id_hier is not None:
+            if _telegram_chat_umziehen_in(chats, chat_id_hier, nachricht["migrate_to_chat_id"]):
+                chats_geaendert = True
+            continue
+        if nachricht.get("migrate_from_chat_id") and chat_id_hier is not None:
+            if _telegram_chat_umziehen_in(chats, nachricht["migrate_from_chat_id"], chat_id_hier):
+                chats_geaendert = True
+            continue
         text = (nachricht.get("text") or "").strip()
         if not text.startswith("/start"):
             continue
@@ -1539,7 +1582,8 @@ def telegram_update_verarbeiten(antwort, offset):
         chat_id = str(chat.get("id", ""))
         if not chat_id:
             continue
-        name = chat.get("first_name") or chat.get("username") or "Unbekannt"
+        # Gruppen haben keinen first_name, nur einen title.
+        name = chat.get("first_name") or chat.get("title") or chat.get("username") or "Unbekannt"
         chats[chat_id] = {"name": name, "verknuepft_am": time.strftime("%Y-%m-%d %H:%M")}
         chats_geaendert = True
         del pending[code]

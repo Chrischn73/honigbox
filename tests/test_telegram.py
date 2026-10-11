@@ -5,6 +5,8 @@ in telegram_update_verarbeiten() - der eigentliche Netzwerk-Poll
 import io
 import json
 import os
+import urllib.error
+import urllib.parse
 import urllib.request
 
 from helpers import get, post
@@ -313,3 +315,84 @@ def test_neuer_bot_token_setzt_offset_und_chats_zurueck(server, monkeypatch):
     post(base_url, "/api/telegram", {"bot_token": "neu"})
     assert not os.path.exists(mod.TELEGRAM_OFFSET_PATH)
     assert mod.lade_telegram_chats() == {}
+
+
+def _fake_urlopen_mit_supergruppe(alte_id, neue_id, gesendet_an):
+    """Telegram-Verhalten nach einer Umwandlung zur Supergruppe: an die alte
+    ID kommt ein HTTP 400 mit parameters.migrate_to_chat_id, die neue ID
+    nimmt die Nachricht an. gesendet_an sammelt alle Ziel-IDs."""
+    echter_urlopen = urllib.request.urlopen
+
+    def _fake_urlopen(*args, **kwargs):
+        ziel = args[0]
+        url = ziel.full_url if isinstance(ziel, urllib.request.Request) else ziel
+        if "api.telegram.org" not in url:
+            return echter_urlopen(*args, **kwargs)
+        chat_id = urllib.parse.parse_qs(ziel.data.decode())["chat_id"][0]
+        gesendet_an.append(chat_id)
+        if chat_id == str(alte_id):
+            body = json.dumps({
+                "ok": False, "error_code": 400,
+                "description": "Bad Request: group chat was upgraded to a supergroup chat",
+                "parameters": {"migrate_to_chat_id": neue_id}}).encode()
+            raise urllib.error.HTTPError(url, 400, "Bad Request", {}, io.BytesIO(body))
+        return FakeResponse(json.dumps({"ok": True, "result": {}}).encode())
+
+    return _fake_urlopen
+
+
+def test_telegram_test_folgt_umwandlung_zur_supergruppe(server, monkeypatch):
+    base_url, mod = server
+    with open(mod.TELEGRAM_CHATS_PATH, "w") as f:
+        json.dump({"-4408586": {"name": "HonigBox", "verknuepft_am": "2026-10-01 12:00"}}, f)
+    gesendet_an = []
+    monkeypatch.setattr(mod.urllib.request, "urlopen",
+                        _fake_urlopen_mit_supergruppe(-4408586, -1004408586535, gesendet_an))
+
+    status, data = post(base_url, "/api/telegram/test", {"token": "abc123"})
+
+    assert status == 200, data
+    assert gesendet_an == ["-4408586", "-1004408586535"]
+    chats = mod.lade_telegram_chats()
+    assert "-4408586" not in chats
+    assert chats["-1004408586535"]["name"] == "HonigBox", "Name/Datum muessen beim Umzug erhalten bleiben"
+
+
+def test_update_verarbeiten_haengt_gruppe_bei_migrate_to_um(galerie_env):
+    mod = galerie_env
+    with open(mod.TELEGRAM_CHATS_PATH, "w") as f:
+        json.dump({"-4408586": {"name": "HonigBox"}}, f)
+    antwort = {"ok": True, "result": [{
+        "update_id": 7,
+        "message": {"chat": {"id": -4408586, "type": "group"}, "migrate_to_chat_id": -1004408586535},
+    }]}
+
+    assert mod.telegram_update_verarbeiten(antwort, 0) == 8
+    assert mod.lade_telegram_chats() == {"-1004408586535": {"name": "HonigBox"}}
+
+
+def test_update_verarbeiten_haengt_gruppe_bei_migrate_from_um(galerie_env):
+    mod = galerie_env
+    with open(mod.TELEGRAM_CHATS_PATH, "w") as f:
+        json.dump({"-4408586": {"name": "HonigBox"}, "111": {"name": "Anna"}}, f)
+    antwort = {"ok": True, "result": [{
+        "update_id": 9,
+        "message": {"chat": {"id": -1004408586535, "type": "supergroup"}, "migrate_from_chat_id": -4408586},
+    }]}
+
+    mod.telegram_update_verarbeiten(antwort, 0)
+    assert mod.lade_telegram_chats() == {"-1004408586535": {"name": "HonigBox"}, "111": {"name": "Anna"}}
+
+
+def test_update_verarbeiten_nimmt_gruppentitel_als_namen(galerie_env, monkeypatch):
+    mod = galerie_env
+    monkeypatch.setattr(mod, "_telegram_sende_nachricht", lambda *a, **k: None)
+    code = mod.erzeuge_telegram_verbindungscode()
+    antwort = {"ok": True, "result": [{
+        "update_id": 5,
+        "message": {"text": f"/start@ellashonigboxbot {code}",
+                    "chat": {"id": -4408586, "type": "group", "title": "HonigBox"}},
+    }]}
+    mod.telegram_update_verarbeiten(antwort, 0)
+
+    assert mod.lade_telegram_chats()["-4408586"]["name"] == "HonigBox"
