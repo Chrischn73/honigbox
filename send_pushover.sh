@@ -20,6 +20,13 @@ elif [ -f "$ALTE_KONFIG" ]; then
   source "$ALTE_KONFIG"
 fi
 
+# Ohne Zugangsdaten gibt es nichts zu senden - frische Installationen ohne
+# Pushover haben weder .pushover-einstellungen.sh noch pushover.conf, der
+# Standard "aktiv" unten (fuer alte pushover.conf-Installationen gedacht)
+# schickte sonst bei jedem Ereignis eine Anfrage mit leerem Token an
+# pushover.net (gefunden 2026-10-11 auf einer frischen Box).
+[ -n "$PUSHOVER_TOKEN" ] && [ -n "$PUSHOVER_USER" ] || exit 0
+
 # Kompletter Kanal-Schalter ("Pushover aktiv" in den Einstellungen) - unabhaengig
 # vom Telegram-Schalter, siehe send_telegram.sh.
 [ "${PUSHOVER_AKTIV:-1}" = "0" ] && exit 0
@@ -77,3 +84,6 @@ curl -s --retry 5 --retry-delay 3 --retry-all-errors \
   --form-string "user=$PUSHOVER_USER" \
   --form-string "message=$TEXT" \
   https://api.pushover.net/1/messages.json
+# Pushovers Antwort endet ohne Zeilenumbruch - das Journal haelt eine
+# unvollstaendige Zeile sonst zurueck, bis honigbox.service stoppt.
+echo
