@@ -175,13 +175,45 @@ def _sekunden_seit_geraete_start():
 AUTO_NEUSTART_DIR = os.environ.get("AUTO_NEUSTART_DIR", "/var/lib/beetown-auto-neustart")
 
 
+AUTO_NEUSTART_VERBRAUCHT_PATH = os.path.join(EINSTELLUNGEN_DIR, ".auto-neustart-verbraucht.json")
+
+
+def _boot_id():
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
 def _automatischer_geraete_start():
+    """Eine Markierung gilt nur fuer den EINEN Geraete-Start, auf den sie
+    folgt. Wird sie beim ersten Aufruf nach einem Boot erstmals gesehen, merkt
+    sich dieser Aufruf (boot_id + Zeitstempel) den Verbrauch; ein spaeterer
+    Start von Hand (Strom weg) zaehlt dann nicht mehr als automatisch, auch
+    wenn die Markierung noch keine Stunde alt ist."""
     try:
         markiert = os.path.getmtime(os.path.join(AUTO_NEUSTART_DIR, "reboot"))
     except OSError:
         return False
     boot = time.time() - _sekunden_seit_geraete_start()
-    return markiert >= boot - 3600
+    if markiert < boot - 3600:
+        return False
+    boot_id = _boot_id()
+    try:
+        with open(AUTO_NEUSTART_VERBRAUCHT_PATH) as f:
+            verbraucht = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        verbraucht = {}
+    if verbraucht.get("marker") == markiert:
+        # Schon gesehen: nur im selben Boot noch "automatisch".
+        return bool(boot_id) and verbraucht.get("boot_id") == boot_id
+    try:
+        with open(AUTO_NEUSTART_VERBRAUCHT_PATH, "w") as f:
+            json.dump({"marker": markiert, "boot_id": boot_id}, f)
+    except OSError:
+        pass
+    return True
 
 
 def zugang_reset_moeglich():
@@ -2819,6 +2851,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    # Marker eines automatischen Neustarts gleich beim Boot als verbraucht
+    # vermerken (siehe _automatischer_geraete_start).
+    _automatischer_geraete_start()
     threading.Thread(target=aufraeum_schleife, daemon=True).start()
     threading.Thread(target=speicher_wache_schleife, daemon=True).start()
     threading.Thread(target=kamera_wache_schleife, daemon=True).start()

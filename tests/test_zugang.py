@@ -325,3 +325,22 @@ def test_kein_reset_fenster_nach_automatischem_neustart(zugang_server, tmp_path)
     alt = time.time() - 2 * 3600
     os.utime(marker, (alt, alt))
     assert mod.zugang_reset_moeglich() is True
+
+
+def test_marker_gilt_nur_fuer_einen_geraete_start(zugang_server, monkeypatch):
+    """Auto-Neustart, danach Strom weg: der zweite Start ist von Hand und muss
+    das Reset-Fenster oeffnen, auch wenn die Markierung < 1 h alt ist."""
+    base_url, mod = zugang_server
+    mod.setze_zugang_passwort("altesPasswort1")
+    os.makedirs(mod.AUTO_NEUSTART_DIR, exist_ok=True)
+    with open(os.path.join(mod.AUTO_NEUSTART_DIR, "reboot"), "w") as f:
+        f.write("0\n")
+
+    monkeypatch.setattr(mod, "_boot_id", lambda: "boot-1")
+    assert mod._automatischer_geraete_start() is True   # erster Start: automatisch
+    assert mod.zugang_reset_moeglich() is False
+    assert mod._automatischer_geraete_start() is True   # Dienst-Neustart im selben Boot
+
+    monkeypatch.setattr(mod, "_boot_id", lambda: "boot-2")  # Strom weg, neuer Boot
+    assert mod._automatischer_geraete_start() is False
+    assert mod.zugang_reset_moeglich() is True
