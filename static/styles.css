@@ -271,7 +271,8 @@ body{
   display:flex; align-items:center; justify-content:center}
 .foto-feed-liste{display:flex; flex-direction:column; gap:1.2rem;
   padding:3.2rem 1rem 2rem; max-width:900px; margin:0 auto}
-.foto-feed-eintrag{margin:0; display:flex; flex-direction:column; align-items:center}
+.foto-feed-eintrag{margin:0; display:flex; flex-direction:column; align-items:center;
+  scroll-margin-top:3.2rem}
 .foto-feed-eintrag img{max-width:100%; max-height:88vh; border-radius:8px}
 .foto-feed-eintrag figcaption{color:#eee; margin-top:.5rem; font-size:.85rem;
   text-align:center; word-break:break-all}

@@ -1,7 +1,7 @@
 // Von der Setup-Seite (honigbox_setup_portal.py, app_version()) per Regex
 // ausgelesen, um die installierte Version mit GitHub-Releases zu vergleichen -
 // beim Versionieren nicht vergessen, mit index.html synchron zu halten.
-const APP_VERSION = 'v1.3.51';
+const APP_VERSION = 'v1.3.52';
 
 const versionTagEl = document.getElementById('app-version-tag');
 if (versionTagEl) versionTagEl.textContent = APP_VERSION;
@@ -388,6 +388,7 @@ async function ladeStatus() {
     const res = await fetch('/api/status');
     const data = await res.json();
     aktualisiereStatusAnzeige(data);
+    pruefeNeueFotos(data.tuer_offen === true);
   } catch {
     // Fetch selbst fehlgeschlagen (nicht nur eine Fehlerantwort) - der Server
     // dieser Seite antwortet gerade gar nicht mehr.
@@ -395,6 +396,64 @@ async function ladeStatus() {
     setzeStatusBadge(statusDienstEl, 'status-fehler', '🔴 Status nicht abrufbar');
     setzeStatusBadge(statusTuerEl, 'status-fehler', '🚪 Tür: unbekannt');
     kameraFehltWarnungEl.hidden = true;
+  }
+}
+
+// Neue Fotos bei offener Tuer automatisch einblenden - laeuft im Takt von
+// ladeStatus() (5 s), solange die Tuer offen ist und noch eine Minute danach
+// (die letzten Fotos einer Serie kommen kurz nach dem Schliessen). Eingebaut
+// wird nur, wenn nichts offen ist, was ein Neuaufbau stoeren wuerde: Die
+// Einzelbild-Ansicht merkt sich nur eine Position in aktuelleBilderListe -
+// kaemen oben neue Fotos dazu, traefe "Loeschen" ein anderes Foto als das
+// angezeigte. Sonst wird es beim naechsten freien Takt nachgeholt.
+const FOTO_NACHLAUF_MS = 60000;
+let tuerZuletztOffenUm = 0;
+let neueFotosAusstehend = false;
+let fotoAbgleichLaeuft = false;
+
+function neuaufbauStoert() {
+  return ausgewaehlt.size > 0 || dragAktiv || touchAuswahlAktiv
+    || document.querySelector('.lightbox, .foto-feed, .confirm-back') !== null;
+}
+
+// Haelt die Karte, die gerade oben im Bild ist, an derselben Stelle - sonst
+// rutscht beim Scrollen weiter unten alles um die neuen Fotos nach unten.
+function renderMitScrollAnker(bilder) {
+  const sichtbar = [...grid.querySelectorAll('.card')].find((c) => c.getBoundingClientRect().bottom > 0);
+  const ankerDatei = sichtbar && window.scrollY > 50 ? sichtbar.querySelector('.bild-checkbox')?.dataset.datei : null;
+  const ankerTop = ankerDatei ? sichtbar.getBoundingClientRect().top : 0;
+  render(bilder);
+  if (!ankerDatei) return;
+  const neu = grid.querySelector(`.bild-checkbox[data-datei="${CSS.escape(ankerDatei)}"]`)?.closest('.card');
+  if (neu) window.scrollBy(0, neu.getBoundingClientRect().top - ankerTop);
+}
+
+async function pruefeNeueFotos(tuerOffen) {
+  if (tuerOffen) tuerZuletztOffenUm = Date.now();
+  const aktiv = tuerOffen || Date.now() - tuerZuletztOffenUm < FOTO_NACHLAUF_MS || neueFotosAusstehend;
+  if (!aktiv || zeigeArchiv || fotoAbgleichLaeuft) return;
+  fotoAbgleichLaeuft = true;
+  try {
+    const res = await fetch('/api/photos?archiv=0');
+    if (!res.ok) return;
+    const data = await res.json();
+    const bilder = data.bilder || [];
+    if (zeigeArchiv) return;  // waehrend der Abfrage ins Archiv gewechselt
+    if (bilder.length === aktuelleBilderListe.length && bilder.every((b, i) => b === aktuelleBilderListe[i])) {
+      neueFotosAusstehend = false;
+      return;
+    }
+    if (neuaufbauStoert()) { neueFotosAusstehend = true; return; }
+    const bekannt = new Set(aktuelleBilderListe);
+    const anzahlNeu = bilder.filter((b) => !bekannt.has(b)).length;
+    archivNotizen = data.notizen || {};
+    renderMitScrollAnker(bilder);
+    neueFotosAusstehend = false;
+    if (anzahlNeu > 0) toast(anzahlNeu === 1 ? '📷 1 neues Foto' : `📷 ${anzahlNeu} neue Fotos`);
+  } catch {
+    // Naechster Takt versucht es erneut - ladeStatus() meldet echte Ausfaelle schon.
+  } finally {
+    fotoAbgleichLaeuft = false;
   }
 }
 
@@ -599,7 +658,7 @@ function oeffneFotoFeed(startIndex) {
         if (!res.ok) { toast('Fehler beim Archivieren'); return; }
         toast('Archiviert');
         entferneFotoLokal(datei);
-        eintrag.remove();
+        eintragEntfernt(eintrag);
       });
       aktionen.appendChild(archivBtn);
     }
@@ -616,7 +675,7 @@ function oeffneFotoFeed(startIndex) {
       if (!res.ok) { toast('Fehler beim Löschen'); return; }
       toast('Gelöscht');
       entferneFotoLokal(datei);
-      eintrag.remove();
+      eintragEntfernt(eintrag);
     });
     aktionen.appendChild(loeschenBtn);
 
@@ -647,6 +706,23 @@ function oeffneFotoFeed(startIndex) {
   const beobachter = new IntersectionObserver((entries) => {
     if (entries.some((e) => e.isIntersecting)) naechsteBatchLaden();
   });
+
+  // Nach Archivieren/Loeschen zum naechsten Foto springen (beim letzten zum
+  // vorherigen) bzw. den Ablauf schliessen, wenn nichts mehr uebrig ist -
+  // vorher blieb nach dem letzten Foto nur der schwarze Hintergrund stehen.
+  function eintragEntfernt(eintrag) {
+    const istEintrag = (el) => el && el.classList.contains('foto-feed-eintrag');
+    const naechster = istEintrag(eintrag.nextElementSibling) ? eintrag.nextElementSibling : null;
+    const vorheriger = istEintrag(eintrag.previousElementSibling) ? eintrag.previousElementSibling : null;
+    eintrag.remove();
+    let ziel = naechster || vorheriger;
+    if (!ziel && naechsterIndex < dateien.length) {
+      naechsteBatchLaden();
+      ziel = liste.querySelector('.foto-feed-eintrag');
+    }
+    if (!ziel) { schliessen(); return; }
+    ziel.scrollIntoView({ block: 'start' });
+  }
 
   back.append(schliessenBtn, liste);
   document.body.appendChild(back);

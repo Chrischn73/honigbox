@@ -498,16 +498,33 @@ def sofortfoto_start():
         print(f"foto.sh (Sofort-Trigger) konnte nicht gestartet werden: {e}")
 
 
+PI_FRISCH_GESTARTET_SEK = 300
+
+
+def pi_frisch_gestartet(uptime_pfad="/proc/uptime", grenze_sek=PI_FRISCH_GESTARTET_SEK):
+    """True, wenn der Pi selbst erst vor kurzem hochgefahren ist. Startet nur
+    dieser Dienst neu (App-Update aus dem Portal, Neustart von Hand, systemd
+    nach einem Absturz), laeuft der Pi schon laenger - dann waere "Raspi wurde
+    gestartet" falsch (bis v1.3.51 kam die Meldung nach jedem naechtlichen
+    Auto-Update). Im Zweifel (uptime unlesbar) wie frueher melden."""
+    try:
+        with open(uptime_pfad) as f:
+            return float(f.read().split()[0]) < grenze_sek
+    except (OSError, ValueError, IndexError):
+        return True
+
+
 time.sleep(5)  # 3 Sek. urspruengliche Startverzoegerung + 2 Sek. wie zuvor in push-boot.sh
 # Stiller Dienst-Neustart (systemneustart.py nach Paket-Updates): kein Pi-Neustart,
 # also auch keine "Raspi wurde gestartet"-Meldung - Marker einmalig verbrauchen.
+# Zusaetzlich bleibt jeder andere reine Dienst-Neustart still (pi_frisch_gestartet).
 STILLER_NEUSTART_MARKER = os.path.join(EINSTELLUNGEN_DIR, ".stiller-dienstneustart")
 if os.path.exists(STILLER_NEUSTART_MARKER):
     try:
         os.remove(STILLER_NEUSTART_MARKER)
     except OSError:
         pass
-else:
+elif pi_frisch_gestartet():
     push("boot")
 
 while True:
